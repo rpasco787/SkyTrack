@@ -19,28 +19,26 @@ public class LiveOpenSkyClient implements FlightDataSource {
 
     private final RestClient restClient;
     private final ObjectMapper mapper;
+    private final OpenSkyTokenManager tokenManager;
 
     public LiveOpenSkyClient(OpenSkyProperties properties, ObjectMapper mapper) {
         this.mapper = mapper;
-
-        RestClient.Builder builder = RestClient.builder()
-                .baseUrl(properties.apiUrl());
-
-        if (properties.username() != null && properties.password() != null) {
-            builder.defaultHeaders(headers ->
-                    headers.setBasicAuth(properties.username(), properties.password()));
-        }
-
-        this.restClient = builder.build();
+        this.restClient = RestClient.builder()
+                .baseUrl(properties.apiUrl())
+                .build();
+        this.tokenManager = (properties.clientId() != null && properties.clientSecret() != null)
+                ? new OpenSkyTokenManager(properties.clientId(), properties.clientSecret())
+                : null;
     }
 
     @Override
     public List<FlightPosition> fetchPositions() {
         try {
-            String body = restClient.get()
-                    .uri("/api/states/all")
-                    .retrieve()
-                    .body(String.class);
+            var request = restClient.get().uri("/api/states/all");
+            if (tokenManager != null) {
+                request = request.header("Authorization", "Bearer " + tokenManager.getToken());
+            }
+            String body = request.retrieve().body(String.class);
 
             JsonNode root = mapper.readTree(body);
             return parseStateVectors(root);

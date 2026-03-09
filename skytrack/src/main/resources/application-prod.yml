@@ -1,5 +1,5 @@
 opensky:
   mode: live
   api-url: https://opensky-network.org
-  username: ${OPENSKY_USERNAME:}
-  password: ${OPENSKY_PASSWORD:}
+  client-id: ${OPENSKY_CLIENT_ID:}
+  client-secret: ${OPENSKY_CLIENT_SECRET:}

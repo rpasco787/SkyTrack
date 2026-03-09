@@ -6,8 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record OpenSkyProperties(
         String mode,
         String apiUrl,
-        String username,
-        String password,
+        String clientId,
+        String clientSecret,
         String replayDir,
         int replaySpeedMultiplier
 ) {

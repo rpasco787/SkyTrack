@@ -13,7 +13,7 @@ import java.util.List;
  * Not intended for CI. Run from IDE or via:
  *   mvn test -Dtest="LiveOpenSkyClientManualTest" -DskipManual=false
  *
- * Set OPENSKY_USERNAME / OPENSKY_PASSWORD env vars for authenticated access
+ * Set OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET env vars for OAuth2 access
  * (5s rate limit vs 10s anonymous).
  */
 @Disabled("Manual only — remove @Disabled to run against live API")
@@ -21,14 +21,14 @@ class LiveOpenSkyClientManualTest {
 
     @Test
     void fetchAndPrintLivePositions() {
-        String username = System.getenv("OPENSKY_USERNAME");
-        String password = System.getenv("OPENSKY_PASSWORD");
+        String clientId = System.getenv("OPENSKY_CLIENT_ID");
+        String clientSecret = System.getenv("OPENSKY_CLIENT_SECRET");
 
         var props = new OpenSkyProperties(
                 "live",
                 "https://opensky-network.org",
-                username,
-                password,
+                clientId,
+                clientSecret,
                 null,
                 1
         );
