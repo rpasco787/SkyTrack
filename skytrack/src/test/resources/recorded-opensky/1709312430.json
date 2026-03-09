@@ -1,0 +1,11 @@
+{
+  "time": 1709312430,
+  "states": [
+    ["abc123", "UAL1234 ", "United States", 1709312430, 1709312430,
+     -87.8500, 41.9800, 10700.0, false, 232.0, 271.0,
+     null, null, null, null, false, 0],
+    ["def789", "DAL567  ", "United States", 1709312430, 1709312430,
+     -73.7781, 40.6413, 0.0, true, 0.0, 0.0,
+     null, null, null, null, true, 0]
+  ]
+}
