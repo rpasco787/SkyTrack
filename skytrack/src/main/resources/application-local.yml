@@ -1,0 +1,4 @@
+opensky:
+  mode: replay
+  replay-dir: ./data/recorded-opensky/
+  replay-speed-multiplier: 1
