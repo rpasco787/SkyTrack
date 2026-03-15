@@ -3,3 +3,6 @@ opensky:
   api-url: https://opensky-network.org
   client-id: ${OPENSKY_CLIENT_ID:}
   client-secret: ${OPENSKY_CLIENT_SECRET:}
+
+sqs:
+  region: ${AWS_REGION:us-east-1}

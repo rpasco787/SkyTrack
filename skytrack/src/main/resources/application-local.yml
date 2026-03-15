@@ -2,3 +2,7 @@ opensky:
   mode: replay
   replay-dir: ./data/recorded-opensky/
   replay-speed-multiplier: 1
+
+sqs:
+  endpoint: http://localhost:4566
+  region: us-east-1

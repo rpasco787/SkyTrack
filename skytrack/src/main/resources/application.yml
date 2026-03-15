@@ -4,3 +4,7 @@ spring:
 
 opensky:
   mode: replay
+
+sqs:
+  positions-queue-name: skytrack-positions.fifo
+  airport-events-queue-name: skytrack-airport-events.fifo
