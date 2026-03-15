@@ -28,3 +28,7 @@ replay_pid*
 skytrack-learning-roadmap.md
 .gitignore
 data
+
+# LocalStack
+localstack/volume/
+.localstack/

@@ -7,6 +7,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import skytrack.demo.client.FlightDataSource;
 import skytrack.demo.model.FlightPosition;
+import skytrack.demo.sqs.SqsPositionProducer;
 
 import java.time.Instant;
 import java.util.List;
@@ -19,29 +20,35 @@ class FlightPollingServiceTest {
     @Mock
     private FlightDataSource flightDataSource;
 
+    @Mock
+    private SqsPositionProducer sqsPositionProducer;
+
     @InjectMocks
     private FlightPollingService pollingService;
 
     @Test
-    void shouldCallFlightDataSourceOnPoll() {
-        when(flightDataSource.fetchPositions()).thenReturn(List.of(
+    void shouldFetchPositionsAndPublishToSqs() {
+        var positions = List.of(
                 new FlightPosition("abc123", "UAL1234", 41.97, -87.91,
                         10668.0, 230.5, 270.0, false,
                         1709312400L, 1709312400L, Instant.now())
-        ));
+        );
+        when(flightDataSource.fetchPositions()).thenReturn(positions);
 
         pollingService.pollFlightData();
 
-        verify(flightDataSource, times(1)).fetchPositions();
+        verify(flightDataSource).fetchPositions();
+        verify(sqsPositionProducer).send(positions);
     }
 
     @Test
-    void shouldHandleEmptyResults() {
+    void shouldNotPublishWhenNoPositions() {
         when(flightDataSource.fetchPositions()).thenReturn(List.of());
 
         pollingService.pollFlightData();
 
-        verify(flightDataSource, times(1)).fetchPositions();
+        verify(flightDataSource).fetchPositions();
+        verifyNoInteractions(sqsPositionProducer);
     }
 
     @Test
@@ -50,6 +57,7 @@ class FlightPollingServiceTest {
 
         pollingService.pollFlightData();
 
-        verify(flightDataSource, times(1)).fetchPositions();
+        verify(flightDataSource).fetchPositions();
+        verifyNoInteractions(sqsPositionProducer);
     }
 }

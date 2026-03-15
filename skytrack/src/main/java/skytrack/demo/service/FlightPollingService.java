@@ -6,6 +6,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import skytrack.demo.client.FlightDataSource;
 import skytrack.demo.model.FlightPosition;
+import skytrack.demo.sqs.SqsPositionProducer;
 
 import java.util.List;
 
@@ -15,9 +16,11 @@ public class FlightPollingService {
     private static final Logger log = LoggerFactory.getLogger(FlightPollingService.class);
 
     private final FlightDataSource flightDataSource;
+    private final SqsPositionProducer sqsPositionProducer;
 
-    public FlightPollingService(FlightDataSource flightDataSource) {
+    public FlightPollingService(FlightDataSource flightDataSource, SqsPositionProducer sqsPositionProducer) {
         this.flightDataSource = flightDataSource;
+        this.sqsPositionProducer = sqsPositionProducer;
     }
 
     @Scheduled(fixedRate = 30_000)
@@ -27,11 +30,8 @@ public class FlightPollingService {
             log.info("Polled {} aircraft positions", positions.size());
 
             if (!positions.isEmpty()) {
-                FlightPosition sample = positions.getFirst();
-                log.debug("Sample: {} ({}) at [{}, {}] alt={}m",
-                        sample.callsign(), sample.icao24(),
-                        sample.latitude(), sample.longitude(),
-                        sample.baroAltitude());
+                sqsPositionProducer.send(positions);
+                log.info("Published {} positions to SQS", positions.size());
             }
         } catch (Exception e) {
             log.error("Flight data polling failed", e);
