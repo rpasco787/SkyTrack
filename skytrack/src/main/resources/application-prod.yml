@@ -6,3 +6,8 @@ opensky:
 
 sqs:
   region: ${AWS_REGION:us-east-1}
+
+aeroapi:
+  enabled: true
+  base-url: https://aeroapi.flightaware.com/aeroapi
+  api-key: ${AEROAPI_KEY:}

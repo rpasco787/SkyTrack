@@ -8,3 +8,8 @@ opensky:
 sqs:
   positions-queue-name: skytrack-positions.fifo
   airport-events-queue-name: skytrack-airport-events.fifo
+
+aeroapi:
+  enabled: false
+  max-monthly-calls: 10000
+  request-timeout-ms: 5000
