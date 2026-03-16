@@ -1,0 +1,16 @@
+{
+  "flights": [{
+    "ident": "AAL100",
+    "ident_iata": "AA100",
+    "operator": "AAL",
+    "origin": {"code": "KDFW", "code_iata": "DFW"},
+    "destination": {"code": "KMIA", "code_iata": "MIA"},
+    "scheduled_out": "2026-03-15T08:00:00Z",
+    "scheduled_in": "2026-03-15T11:00:00Z",
+    "actual_out": "2026-03-15T08:01:00Z",
+    "actual_in": "2026-03-15T11:30:00Z",
+    "gate_origin": null,
+    "gate_destination": "D7",
+    "aircraft_type": "B77W"
+  }]
+}

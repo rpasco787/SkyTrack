@@ -1,0 +1,16 @@
+{
+  "flights": [{
+    "ident": "DAL567",
+    "ident_iata": "DL567",
+    "operator": "DAL",
+    "origin": {"code": "KATL", "code_iata": "ATL"},
+    "destination": {"code": "KJFK", "code_iata": "JFK"},
+    "scheduled_out": "2026-03-15T10:00:00Z",
+    "scheduled_in": "2026-03-15T13:00:00Z",
+    "actual_out": "2026-03-15T10:45:00Z",
+    "actual_in": null,
+    "gate_origin": "C14",
+    "gate_destination": null,
+    "aircraft_type": "A321"
+  }]
+}

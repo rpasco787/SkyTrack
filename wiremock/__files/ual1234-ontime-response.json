@@ -1,0 +1,16 @@
+{
+  "flights": [{
+    "ident": "UAL1234",
+    "ident_iata": "UA1234",
+    "operator": "UAL",
+    "origin": {"code": "KORD", "code_iata": "ORD"},
+    "destination": {"code": "KLAX", "code_iata": "LAX"},
+    "scheduled_out": "2026-03-15T14:00:00Z",
+    "scheduled_in": "2026-03-15T16:30:00Z",
+    "actual_out": "2026-03-15T14:02:00Z",
+    "actual_in": "2026-03-15T16:31:00Z",
+    "gate_origin": "B12",
+    "gate_destination": "A5",
+    "aircraft_type": "B738"
+  }]
+}

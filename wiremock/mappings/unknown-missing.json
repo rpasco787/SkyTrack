@@ -1,0 +1,12 @@
+{
+  "priority": 10,
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/aeroapi/flights/.*"
+  },
+  "response": {
+    "status": 200,
+    "bodyFileName": "unknown-missing-response.json",
+    "headers": { "Content-Type": "application/json" }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/aeroapi/flights/DAL567.*"
+  },
+  "response": {
+    "status": 200,
+    "bodyFileName": "dal567-delayed-departure-response.json",
+    "headers": { "Content-Type": "application/json" }
+  }
+}

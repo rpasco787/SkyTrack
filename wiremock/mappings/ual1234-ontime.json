@@ -1,0 +1,11 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/aeroapi/flights/UAL1234.*"
+  },
+  "response": {
+    "status": 200,
+    "bodyFileName": "ual1234-ontime-response.json",
+    "headers": { "Content-Type": "application/json" }
+  }
+}
