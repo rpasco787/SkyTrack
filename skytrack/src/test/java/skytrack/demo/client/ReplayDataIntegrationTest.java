@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class ReplayDataIntegrationTest {
 
-    private static final Path RECORDED_DIR = Path.of("./data/recorded-opensky/");
+    private static final Path RECORDED_DIR = Path.of("./skytrack/data/recorded-opensky/");
     private static final String FIRST_FILE = "1773078640.json";
 
     private final ObjectMapper mapper = new ObjectMapper();
