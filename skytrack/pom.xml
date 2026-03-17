@@ -85,6 +85,12 @@
 			<artifactId>sqs</artifactId>
 		</dependency>
 
+		<!-- AWS SDK v2 - DynamoDB Enhanced Client -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>dynamodb-enhanced</artifactId>
+		</dependency>
+
 		<!-- WireMock for AeroAPI integration tests -->
 		<dependency>
 			<groupId>org.wiremock</groupId>

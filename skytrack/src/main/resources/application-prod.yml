@@ -11,3 +11,8 @@ aeroapi:
   enabled: true
   base-url: https://aeroapi.flightaware.com/aeroapi
   api-key: ${AEROAPI_KEY:}
+
+skytrack:
+  dynamodb:
+    table-name: skytrack-aircraft
+    region: us-east-1

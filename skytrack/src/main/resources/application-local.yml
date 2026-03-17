@@ -11,3 +11,7 @@ aeroapi:
   enabled: true
   base-url: http://localhost:9090/aeroapi
   api-key: mock-api-key
+
+skytrack:
+  dynamodb:
+    endpoint: http://localhost:4566

@@ -13,3 +13,8 @@ aeroapi:
   enabled: false
   max-monthly-calls: 10000
   request-timeout-ms: 5000
+
+skytrack:
+  dynamodb:
+    table-name: skytrack-aircraft
+    region: us-east-1
