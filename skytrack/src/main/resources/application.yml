@@ -18,3 +18,8 @@ skytrack:
   dynamodb:
     table-name: skytrack-aircraft
     region: us-east-1
+  state-machine:
+    ground-altitude-meters: 150
+    approach-radius-km: 50
+    ground-radius-km: 5
+    stale-timeout-seconds: 300
