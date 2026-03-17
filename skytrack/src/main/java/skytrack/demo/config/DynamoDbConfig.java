@@ -3,9 +3,12 @@ package skytrack.demo.config;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import skytrack.demo.model.AircraftTrack;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
+import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
+import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
@@ -34,5 +37,11 @@ public class DynamoDbConfig {
         return DynamoDbEnhancedClient.builder()
                 .dynamoDbClient(client)
                 .build();
+    }
+
+    @Bean
+    public DynamoDbTable<AircraftTrack> aircraftTrackTable(
+            DynamoDbEnhancedClient enhancedClient, DynamoDbProperties props) {
+        return enhancedClient.table(props.tableName(), TableSchema.fromBean(AircraftTrack.class));
     }
 }
