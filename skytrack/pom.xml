@@ -131,6 +131,7 @@
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
 					<argLine>-XX:+EnableDynamicAgentLoading</argLine>
+					<workingDirectory>${project.basedir}/..</workingDirectory>
 				</configuration>
 			</plugin>
 			<plugin>
