@@ -2,12 +2,10 @@ package skytrack.demo.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 import skytrack.demo.model.FlightPosition;
 
 import java.util.List;
 
-@Component
 public class LoggingFlightPositionHandler implements FlightPositionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingFlightPositionHandler.class);
