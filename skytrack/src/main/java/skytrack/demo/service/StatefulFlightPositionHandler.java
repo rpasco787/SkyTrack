@@ -19,13 +19,16 @@ public class StatefulFlightPositionHandler implements FlightPositionHandler {
     private final AircraftTrackRepository repository;
     private final AircraftStateMachine stateMachine;
     private final ScheduleResolver scheduleResolver;
+    private final DelayEventProcessor delayEventProcessor;
 
     public StatefulFlightPositionHandler(AircraftTrackRepository repository,
                                          AircraftStateMachine stateMachine,
-                                         ScheduleResolver scheduleResolver) {
+                                         ScheduleResolver scheduleResolver,
+                                         DelayEventProcessor delayEventProcessor) {
         this.repository = repository;
         this.stateMachine = stateMachine;
         this.scheduleResolver = scheduleResolver;
+        this.delayEventProcessor = delayEventProcessor;
     }
 
     @Override
@@ -42,10 +45,7 @@ public class StatefulFlightPositionHandler implements FlightPositionHandler {
                 if (result.landingEvent().isPresent()) {
                     landings++;
                     var resolved = scheduleResolver.resolve(result.landingEvent().get());
-                    log.info("Landing resolved: {} {} at {} delay={}s method={}",
-                            resolved.carrierCode(), resolved.flightNumber(),
-                            resolved.arrivalAirportIata(), resolved.delaySeconds(),
-                            resolved.resolutionMethod());
+                    delayEventProcessor.process(resolved);
                 }
             } catch (Exception e) {
                 log.error("Error processing position for icao24={}: {}",

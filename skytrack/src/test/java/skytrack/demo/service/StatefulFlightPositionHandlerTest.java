@@ -22,12 +22,14 @@ class StatefulFlightPositionHandlerTest {
     @Mock private AircraftTrackRepository repository;
     @Mock private AircraftStateMachine stateMachine;
     @Mock private ScheduleResolver scheduleResolver;
+    @Mock private DelayEventProcessor delayEventProcessor;
 
     private StatefulFlightPositionHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new StatefulFlightPositionHandler(repository, stateMachine, scheduleResolver);
+        handler = new StatefulFlightPositionHandler(
+                repository, stateMachine, scheduleResolver, delayEventProcessor);
     }
 
     private FlightPosition position(String icao24, String callsign) {
@@ -50,6 +52,7 @@ class StatefulFlightPositionHandlerTest {
         verify(stateMachine).process(eq(existingTrack), any());
         verify(repository).save(existingTrack);
         verify(scheduleResolver, never()).resolve(any());
+        verify(delayEventProcessor, never()).process(any());
     }
 
     @Test
@@ -67,7 +70,7 @@ class StatefulFlightPositionHandlerTest {
     }
 
     @Test
-    void shouldCallScheduleResolverOnLanding() {
+    void shouldCallScheduleResolverAndDelayProcessorOnLanding() {
         var track = AircraftTrack.initial("abc123");
         when(repository.findByIcao24("abc123")).thenReturn(Optional.of(track));
 
@@ -83,14 +86,13 @@ class StatefulFlightPositionHandlerTest {
         handler.handle(List.of(position("abc123", "UAL1234")));
 
         verify(scheduleResolver).resolve(landingEvent);
+        verify(delayEventProcessor).process(resolved);
     }
 
     @Test
     void shouldContinueProcessingAfterErrorOnOnePosition() {
-        // First position causes an error
         when(repository.findByIcao24("bad123")).thenThrow(new RuntimeException("DynamoDB error"));
 
-        // Second position is fine
         var track = AircraftTrack.initial("good456");
         when(repository.findByIcao24("good456")).thenReturn(Optional.of(track));
         var result = new StateTransitionResult(track, Optional.empty());
@@ -101,7 +103,6 @@ class StatefulFlightPositionHandlerTest {
                 position("good456", "OK1")
         ));
 
-        // Second position should still be processed
         verify(repository).save(track);
     }
 }
