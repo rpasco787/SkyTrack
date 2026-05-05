@@ -3,6 +3,7 @@ package skytrack.demo.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import skytrack.demo.service.FlightPositionHandler;
+import skytrack.demo.sqs.SqsAirportEventProducer;
 import skytrack.demo.sqs.SqsPositionConsumer;
 import skytrack.demo.sqs.SqsPositionProducer;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -34,6 +35,12 @@ public class SqsConfig {
     public SqsPositionProducer sqsPositionProducer(SqsClient sqsClient, SqsProperties properties) {
         String queueUrl = resolveQueueUrl(sqsClient, properties.positionsQueueName());
         return new SqsPositionProducer(sqsClient, queueUrl);
+    }
+
+    @Bean
+    public SqsAirportEventProducer sqsAirportEventProducer(SqsClient sqsClient, SqsProperties properties) {
+        String queueUrl = resolveQueueUrl(sqsClient, properties.airportEventsQueueName());
+        return new SqsAirportEventProducer(sqsClient, queueUrl);
     }
 
     @Bean
