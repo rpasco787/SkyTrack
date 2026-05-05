@@ -23,3 +23,9 @@ skytrack:
     approach-radius-km: 50
     ground-radius-km: 5
     stale-timeout-seconds: 300
+  disruption:
+    window-minutes: 60
+    bucket-size-minutes: 1
+    delay-threshold-minutes: 15
+    cascade-threshold-minutes: 30
+    cascade-propagation-factor: 0.85
