@@ -8,9 +8,11 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 import skytrack.demo.client.FlightScheduleApiClient;
+import skytrack.demo.config.DisruptionScoreProperties;
 import skytrack.demo.config.StateMachineProperties;
 import skytrack.demo.model.*;
 import skytrack.demo.repository.AircraftTrackRepository;
+import skytrack.demo.sqs.SqsAirportEventProducer;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
@@ -25,6 +27,9 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 @Testcontainers
 class FlightPipelineIntegrationTest {
@@ -38,6 +43,8 @@ class FlightPipelineIntegrationTest {
     private static DynamoDbClient dynamoDbClient;
     private static AircraftTrackRepository repository;
     private static StatefulFlightPositionHandler handler;
+    private static DisruptionScoreService disruptionScoreService;
+    private static SqsAirportEventProducer mockEventProducer;
 
     @BeforeAll
     static void setUp() throws Exception {
@@ -48,7 +55,6 @@ class FlightPipelineIntegrationTest {
                         AwsBasicCredentials.create(localstack.getAccessKey(), localstack.getSecretKey())))
                 .build();
 
-        // Create DynamoDB table
         dynamoDbClient.createTable(CreateTableRequest.builder()
                 .tableName("skytrack-aircraft")
                 .attributeDefinitions(
@@ -65,16 +71,14 @@ class FlightPipelineIntegrationTest {
                 "skytrack-aircraft", TableSchema.fromBean(AircraftTrack.class));
         repository = new AircraftTrackRepository(table);
 
-        // Build the handler with real components
         var airportLookup = new AirportLookupService("data/airports/airports.csv");
         airportLookup.loadAirports();
 
-        var props = new StateMachineProperties(150.0, 50.0, 5.0, 300);
-        var stateMachine = new AircraftStateMachine(airportLookup, props);
+        var smProps = new StateMachineProperties(150.0, 50.0, 5.0, 300);
+        var stateMachine = new AircraftStateMachine(airportLookup, smProps);
         var callsignParser = new CallsignParser();
         var routeAverageEstimator = new RouteAverageEstimator();
 
-        // Stub AeroAPI client — returns a schedule for UAL1234
         FlightScheduleApiClient apiClient = new FlightScheduleApiClient() {
             @Override
             public Optional<FlightSchedule> getFlightSchedule(String callsign, String date) {
@@ -96,7 +100,18 @@ class FlightPipelineIntegrationTest {
         };
 
         var scheduleResolver = new ScheduleResolver(apiClient, callsignParser, routeAverageEstimator);
-        handler = new StatefulFlightPositionHandler(repository, stateMachine, scheduleResolver);
+
+        // Delay pipeline
+        var delayComputer = new DelayComputer();
+        var disruptionProps = new DisruptionScoreProperties(60, 1, 15, 30, 0.85);
+        disruptionScoreService = new DisruptionScoreService(disruptionProps);
+        mockEventProducer = mock(SqsAirportEventProducer.class);
+        var cascadeDetector = new CascadeDetector(disruptionProps);
+        var delayEventProcessor = new DelayEventProcessor(
+                delayComputer, disruptionScoreService, mockEventProducer, cascadeDetector);
+
+        handler = new StatefulFlightPositionHandler(
+                repository, stateMachine, scheduleResolver, delayEventProcessor);
     }
 
     @AfterAll
@@ -138,6 +153,9 @@ class FlightPipelineIntegrationTest {
         assertThat(track3).isPresent();
         assertThat(track3.get().getAircraftState()).isEqualTo(AircraftState.ON_GROUND);
         assertThat(track3.get().getNearestAirportIcao()).isEqualTo("KORD");
+
+        // Verify delay event was published to SQS
+        verify(mockEventProducer).send(any(DelayEvent.class));
     }
 
     @Test
@@ -145,7 +163,6 @@ class FlightPipelineIntegrationTest {
         String icao24 = "integ-test-2";
         long t = Instant.parse("2026-03-15T18:00:00Z").getEpochSecond();
 
-        // Start on ground at ORD
         handler.handle(List.of(new FlightPosition(
                 icao24, "DAL567", 41.9742, -87.9073, 0.0, 0.0, 0.0,
                 true, t, t - 5, Instant.ofEpochSecond(t))));
@@ -153,7 +170,6 @@ class FlightPipelineIntegrationTest {
         var track1 = repository.findByIcao24(icao24);
         assertThat(track1.get().getAircraftState()).isEqualTo(AircraftState.ON_GROUND);
 
-        // Take off
         t += 120;
         handler.handle(List.of(new FlightPosition(
                 icao24, "DAL567", 41.98, -87.91, 500.0, 150.0, 270.0,
@@ -168,14 +184,35 @@ class FlightPipelineIntegrationTest {
         String icao24 = "integ-test-3";
         long t = Instant.parse("2026-03-15T19:00:00Z").getEpochSecond();
 
-        // Airborne with unknown callsign
         handler.handle(List.of(new FlightPosition(
                 icao24, "ZZZ999", 40.0, -90.0, 10000.0, 450.0, 45.0,
                 false, t, t - 5, Instant.ofEpochSecond(t))));
 
-        // Should still track state, just can't resolve schedule
         var track = repository.findByIcao24(icao24);
         assertThat(track).isPresent();
         assertThat(track.get().getAircraftState()).isEqualTo(AircraftState.EN_ROUTE);
+    }
+
+    @Test
+    void shouldUpdateDisruptionScoreAfterLanding() {
+        String icao24 = "integ-test-4";
+        long t = Instant.parse("2026-03-15T20:00:00Z").getEpochSecond();
+
+        // Fly and land at ORD
+        handler.handle(List.of(new FlightPosition(
+                icao24, "UAL1234", 40.0, -90.0, 10000.0, 450.0, 45.0,
+                false, t, t - 5, Instant.ofEpochSecond(t))));
+        t += 60;
+        handler.handle(List.of(new FlightPosition(
+                icao24, "UAL1234", 42.1, -87.8, 3000.0, 250.0, 45.0,
+                false, t, t - 5, Instant.ofEpochSecond(t))));
+        t += 60;
+        handler.handle(List.of(new FlightPosition(
+                icao24, "UAL1234", 41.9742, -87.9073, 0.0, 0.0, 0.0,
+                true, t, t - 5, Instant.ofEpochSecond(t))));
+
+        // Verify disruption score was updated for ORD
+        var score = disruptionScoreService.computeScore("ORD");
+        assertThat(score.totalFlightsInWindow()).isGreaterThanOrEqualTo(1);
     }
 }
