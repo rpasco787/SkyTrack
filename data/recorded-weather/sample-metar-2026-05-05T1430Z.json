@@ -1,0 +1,50 @@
+[
+  {
+    "icaoId": "KORD",
+    "obsTime": 1746455400,
+    "visib": "10+",
+    "wdir": 270,
+    "wspd": 14,
+    "wgst": 22,
+    "rawOb": "METAR KORD 051430Z 27014G22KT 10SM FEW040 SCT100",
+    "clouds": [{"cover": "FEW", "base": 4000}, {"cover": "SCT", "base": 10000}]
+  },
+  {
+    "icaoId": "KATL",
+    "obsTime": 1746455400,
+    "visib": "4",
+    "wdir": 90,
+    "wspd": 8,
+    "rawOb": "METAR KATL 051430Z 09008KT 4SM BR OVC025",
+    "clouds": [{"cover": "OVC", "base": 2500}]
+  },
+  {
+    "icaoId": "KJFK",
+    "obsTime": 1746455400,
+    "visib": "2",
+    "wdir": 180,
+    "wspd": 12,
+    "wgst": 18,
+    "rawOb": "METAR KJFK 051430Z 18012G18KT 2SM RA OVC008",
+    "clouds": [{"cover": "OVC", "base": 800}]
+  },
+  {
+    "icaoId": "KLAX",
+    "obsTime": 1746455400,
+    "visib": "10+",
+    "wdir": 250,
+    "wspd": 6,
+    "rawOb": "METAR KLAX 051430Z 25006KT 10SM CLR",
+    "clouds": [{"cover": "CLR"}]
+  },
+  {
+    "icaoId": "KDFW",
+    "obsTime": 1746455400,
+    "visib": "10+",
+    "wdir": 160,
+    "wspd": 18,
+    "wgst": 28,
+    "rawOb": "METAR KDFW 051430Z 16018G28KT 10SM SCT040 BKN200",
+    "clouds": [{"cover": "SCT", "base": 4000}, {"cover": "BKN", "base": 20000}]
+  }
+]
