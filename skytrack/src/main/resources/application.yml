@@ -29,3 +29,15 @@ skytrack:
     delay-threshold-minutes: 15
     cascade-threshold-minutes: 30
     cascade-propagation-factor: 0.85
+
+weather:
+  mode: replay
+  request-timeout-ms: 5000
+  poll-interval-minutes: 15
+  cache-ttl-minutes: 30
+  target-airports:
+    - KORD
+    - KATL
+    - KJFK
+    - KLAX
+    - KDFW

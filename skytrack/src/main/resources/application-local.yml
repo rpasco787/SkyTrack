@@ -15,3 +15,7 @@ aeroapi:
 skytrack:
   dynamodb:
     endpoint: http://localhost:4566
+
+weather:
+  mode: replay
+  replay-dir: ./data/recorded-weather/
