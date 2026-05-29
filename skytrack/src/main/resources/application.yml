@@ -18,6 +18,11 @@ skytrack:
   dynamodb:
     table-name: skytrack-aircraft
     region: us-east-1
+  s3:
+    bucket: skytrack-history
+    region: us-east-1
+    prefix: delays
+    flush-interval-seconds: 300
   state-machine:
     ground-altitude-meters: 150
     approach-radius-km: 50

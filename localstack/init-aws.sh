@@ -38,3 +38,10 @@ awslocal dynamodb update-time-to-live \
 
 echo "DynamoDB table created:"
 awslocal dynamodb list-tables
+
+echo "Creating S3 history bucket..."
+
+awslocal s3 mb s3://skytrack-history
+
+echo "S3 buckets created:"
+awslocal s3 ls

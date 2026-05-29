@@ -15,6 +15,9 @@ aeroapi:
 skytrack:
   dynamodb:
     endpoint: http://localhost:4566
+  s3:
+    endpoint: http://localhost:4566
+    flush-interval-seconds: 60
 
 weather:
   mode: replay

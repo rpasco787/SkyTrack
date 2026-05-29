@@ -13,7 +13,7 @@ services:
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=sqs,dynamodb
+      - SERVICES=sqs,dynamodb,s3
       - DEFAULT_REGION=us-east-1
     volumes:
       - "./localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh"
