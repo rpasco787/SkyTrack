@@ -23,6 +23,7 @@ public class DelayEventProcessor {
     private final WeatherCache weatherCache;
     private final HistoricalDelayWriter historicalDelayWriter;
     private final ScheduleCoverageTracker coverageTracker;
+    private final RecentCascadeStore recentCascadeStore;
 
     public DelayEventProcessor(DelayComputer delayComputer,
                                DisruptionScoreService disruptionScoreService,
@@ -30,7 +31,8 @@ public class DelayEventProcessor {
                                CascadeDetector cascadeDetector,
                                WeatherCache weatherCache,
                                HistoricalDelayWriter historicalDelayWriter,
-                               ScheduleCoverageTracker coverageTracker) {
+                               ScheduleCoverageTracker coverageTracker,
+                               RecentCascadeStore recentCascadeStore) {
         this.delayComputer = delayComputer;
         this.disruptionScoreService = disruptionScoreService;
         this.eventProducer = eventProducer;
@@ -38,6 +40,7 @@ public class DelayEventProcessor {
         this.weatherCache = weatherCache;
         this.historicalDelayWriter = historicalDelayWriter;
         this.coverageTracker = coverageTracker;
+        this.recentCascadeStore = recentCascadeStore;
     }
 
     public void process(ResolvedArrival arrival) {
@@ -49,10 +52,12 @@ public class DelayEventProcessor {
         historicalDelayWriter.buffer(delayEvent);
         coverageTracker.record(delayEvent.resolutionMethod());
 
-        cascadeDetector.checkCascade(delayEvent).ifPresent(alert ->
-                log.info("Cascade risk: {} at {} predicted downstream delay={}min",
-                        alert.sourceCallsign(), alert.arrivalAirportIata(),
-                        alert.predictedDownstreamDelaySeconds() / 60));
+        cascadeDetector.checkCascade(delayEvent).ifPresent(alert -> {
+            recentCascadeStore.add(alert);
+            log.info("Cascade risk: {} at {} predicted downstream delay={}min",
+                    alert.sourceCallsign(), alert.arrivalAirportIata(),
+                    alert.predictedDownstreamDelaySeconds() / 60);
+        });
 
         log.debug("Processed delay event: {} {} at {} classification={} delay={}s weather={}",
                 delayEvent.carrierCode(), delayEvent.flightNumber(),

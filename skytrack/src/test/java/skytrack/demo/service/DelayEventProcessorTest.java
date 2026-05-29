@@ -9,6 +9,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import skytrack.demo.model.*;
 import skytrack.demo.parquet.HistoricalDelayWriter;
 import skytrack.demo.sqs.SqsAirportEventProducer;
+import skytrack.demo.service.RecentCascadeStore;
 import skytrack.demo.service.ScheduleCoverageTracker;
 
 import java.time.Clock;
@@ -33,6 +34,7 @@ class DelayEventProcessorTest {
     @Mock private WeatherCache weatherCache;
     @Mock private HistoricalDelayWriter historicalDelayWriter;
     @Mock private ScheduleCoverageTracker coverageTracker;
+    @Mock private RecentCascadeStore recentCascadeStore;
 
     private DelayEventProcessor processor;
 
@@ -41,7 +43,7 @@ class DelayEventProcessorTest {
         lenient().when(weatherCache.get(anyString())).thenReturn(Optional.empty());
         processor = new DelayEventProcessor(
                 delayComputer, disruptionScoreService, eventProducer, cascadeDetector,
-                weatherCache, historicalDelayWriter, coverageTracker);
+                weatherCache, historicalDelayWriter, coverageTracker, recentCascadeStore);
     }
 
     private ResolvedArrival resolvedArrival(long delaySeconds) {
@@ -87,6 +89,7 @@ class DelayEventProcessorTest {
         processor.process(arrival);
 
         verify(cascadeDetector).checkCascade(event);
+        verify(recentCascadeStore).add(alert);
     }
 
     @Test
@@ -119,7 +122,7 @@ class DelayEventProcessorTest {
                 2.0, 800, 18, 25, FlightCategory.IFR, "raw")));
 
         var p = new DelayEventProcessor(realComputer, disruptionScoreService,
-                eventProducer, cascadeDetector, realCache, historicalDelayWriter, coverageTracker);
+                eventProducer, cascadeDetector, realCache, historicalDelayWriter, coverageTracker, recentCascadeStore);
         when(cascadeDetector.checkCascade(any())).thenReturn(Optional.empty());
 
         var arrival = new ResolvedArrival("abc123", "UAL1234", "UA", "1234",
@@ -164,7 +167,7 @@ class DelayEventProcessorTest {
         WeatherCache emptyCache = new WeatherCache(props, Clock.systemUTC());
 
         var p = new DelayEventProcessor(realComputer, disruptionScoreService,
-                eventProducer, cascadeDetector, emptyCache, historicalDelayWriter, coverageTracker);
+                eventProducer, cascadeDetector, emptyCache, historicalDelayWriter, coverageTracker, recentCascadeStore);
         when(cascadeDetector.checkCascade(any())).thenReturn(Optional.empty());
 
         var arrival = new ResolvedArrival("abc123", "UAL1234", "UA", "1234",

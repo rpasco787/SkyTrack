@@ -8,6 +8,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 import skytrack.demo.client.FlightScheduleApiClient;
+import skytrack.demo.service.RecentCascadeStore;
+import skytrack.demo.service.ScheduleCoverageTracker;
 import skytrack.demo.config.DisruptionScoreProperties;
 import skytrack.demo.config.StateMachineProperties;
 import skytrack.demo.model.*;
@@ -111,7 +113,9 @@ class FlightPipelineIntegrationTest {
         org.mockito.Mockito.when(weatherCache.get(any())).thenReturn(Optional.empty());
         var delayEventProcessor = new DelayEventProcessor(
                 delayComputer, disruptionScoreService, mockEventProducer, cascadeDetector, weatherCache,
-                mock(skytrack.demo.parquet.HistoricalDelayWriter.class));
+                mock(skytrack.demo.parquet.HistoricalDelayWriter.class),
+                mock(ScheduleCoverageTracker.class),
+                mock(RecentCascadeStore.class));
 
         handler = new StatefulFlightPositionHandler(
                 repository, stateMachine, scheduleResolver, delayEventProcessor);
