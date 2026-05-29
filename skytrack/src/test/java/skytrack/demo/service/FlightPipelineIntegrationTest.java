@@ -110,7 +110,8 @@ class FlightPipelineIntegrationTest {
         var weatherCache = mock(WeatherCache.class);
         org.mockito.Mockito.when(weatherCache.get(any())).thenReturn(Optional.empty());
         var delayEventProcessor = new DelayEventProcessor(
-                delayComputer, disruptionScoreService, mockEventProducer, cascadeDetector, weatherCache);
+                delayComputer, disruptionScoreService, mockEventProducer, cascadeDetector, weatherCache,
+                mock(skytrack.demo.parquet.HistoricalDelayWriter.class));
 
         handler = new StatefulFlightPositionHandler(
                 repository, stateMachine, scheduleResolver, delayEventProcessor);
