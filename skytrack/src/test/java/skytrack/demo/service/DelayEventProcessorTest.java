@@ -9,6 +9,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import skytrack.demo.model.*;
 import skytrack.demo.parquet.HistoricalDelayWriter;
 import skytrack.demo.sqs.SqsAirportEventProducer;
+import skytrack.demo.service.ScheduleCoverageTracker;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -31,6 +32,7 @@ class DelayEventProcessorTest {
     @Mock private CascadeDetector cascadeDetector;
     @Mock private WeatherCache weatherCache;
     @Mock private HistoricalDelayWriter historicalDelayWriter;
+    @Mock private ScheduleCoverageTracker coverageTracker;
 
     private DelayEventProcessor processor;
 
@@ -39,7 +41,7 @@ class DelayEventProcessorTest {
         lenient().when(weatherCache.get(anyString())).thenReturn(Optional.empty());
         processor = new DelayEventProcessor(
                 delayComputer, disruptionScoreService, eventProducer, cascadeDetector,
-                weatherCache, historicalDelayWriter);
+                weatherCache, historicalDelayWriter, coverageTracker);
     }
 
     private ResolvedArrival resolvedArrival(long delaySeconds) {
@@ -117,7 +119,7 @@ class DelayEventProcessorTest {
                 2.0, 800, 18, 25, FlightCategory.IFR, "raw")));
 
         var p = new DelayEventProcessor(realComputer, disruptionScoreService,
-                eventProducer, cascadeDetector, realCache, historicalDelayWriter);
+                eventProducer, cascadeDetector, realCache, historicalDelayWriter, coverageTracker);
         when(cascadeDetector.checkCascade(any())).thenReturn(Optional.empty());
 
         var arrival = new ResolvedArrival("abc123", "UAL1234", "UA", "1234",
@@ -128,6 +130,18 @@ class DelayEventProcessorTest {
         verify(eventProducer).send(captor.capture());
         assertThat(captor.getValue().flightCategory()).isEqualTo(FlightCategory.IFR);
         assertThat(captor.getValue().ceilingFeet()).isEqualTo(800);
+    }
+
+    @Test
+    void shouldRecordResolutionMethodInCoverageTracker() {
+        var arrival = resolvedArrival(900);
+        var event = delayEvent(900);
+        when(delayComputer.compute(eq(arrival), any())).thenReturn(event);
+        when(cascadeDetector.checkCascade(event)).thenReturn(Optional.empty());
+
+        processor.process(arrival);
+
+        verify(coverageTracker).record(event.resolutionMethod());
     }
 
     @Test
@@ -150,7 +164,7 @@ class DelayEventProcessorTest {
         WeatherCache emptyCache = new WeatherCache(props, Clock.systemUTC());
 
         var p = new DelayEventProcessor(realComputer, disruptionScoreService,
-                eventProducer, cascadeDetector, emptyCache, historicalDelayWriter);
+                eventProducer, cascadeDetector, emptyCache, historicalDelayWriter, coverageTracker);
         when(cascadeDetector.checkCascade(any())).thenReturn(Optional.empty());
 
         var arrival = new ResolvedArrival("abc123", "UAL1234", "UA", "1234",

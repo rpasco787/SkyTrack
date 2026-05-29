@@ -22,19 +22,22 @@ public class DelayEventProcessor {
     private final CascadeDetector cascadeDetector;
     private final WeatherCache weatherCache;
     private final HistoricalDelayWriter historicalDelayWriter;
+    private final ScheduleCoverageTracker coverageTracker;
 
     public DelayEventProcessor(DelayComputer delayComputer,
                                DisruptionScoreService disruptionScoreService,
                                SqsAirportEventProducer eventProducer,
                                CascadeDetector cascadeDetector,
                                WeatherCache weatherCache,
-                               HistoricalDelayWriter historicalDelayWriter) {
+                               HistoricalDelayWriter historicalDelayWriter,
+                               ScheduleCoverageTracker coverageTracker) {
         this.delayComputer = delayComputer;
         this.disruptionScoreService = disruptionScoreService;
         this.eventProducer = eventProducer;
         this.cascadeDetector = cascadeDetector;
         this.weatherCache = weatherCache;
         this.historicalDelayWriter = historicalDelayWriter;
+        this.coverageTracker = coverageTracker;
     }
 
     public void process(ResolvedArrival arrival) {
@@ -44,6 +47,7 @@ public class DelayEventProcessor {
         disruptionScoreService.recordDelay(delayEvent);
         eventProducer.send(delayEvent);
         historicalDelayWriter.buffer(delayEvent);
+        coverageTracker.record(delayEvent.resolutionMethod());
 
         cascadeDetector.checkCascade(delayEvent).ifPresent(alert ->
                 log.info("Cascade risk: {} at {} predicted downstream delay={}min",
