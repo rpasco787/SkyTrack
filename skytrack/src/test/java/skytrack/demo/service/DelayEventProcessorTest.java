@@ -7,6 +7,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import skytrack.demo.model.*;
+import skytrack.demo.parquet.HistoricalDelayWriter;
 import skytrack.demo.sqs.SqsAirportEventProducer;
 
 import java.time.Clock;
@@ -29,6 +30,7 @@ class DelayEventProcessorTest {
     @Mock private SqsAirportEventProducer eventProducer;
     @Mock private CascadeDetector cascadeDetector;
     @Mock private WeatherCache weatherCache;
+    @Mock private HistoricalDelayWriter historicalDelayWriter;
 
     private DelayEventProcessor processor;
 
@@ -36,7 +38,8 @@ class DelayEventProcessorTest {
     void setUp() {
         lenient().when(weatherCache.get(anyString())).thenReturn(Optional.empty());
         processor = new DelayEventProcessor(
-                delayComputer, disruptionScoreService, eventProducer, cascadeDetector, weatherCache);
+                delayComputer, disruptionScoreService, eventProducer, cascadeDetector,
+                weatherCache, historicalDelayWriter);
     }
 
     private ResolvedArrival resolvedArrival(long delaySeconds) {
@@ -114,7 +117,7 @@ class DelayEventProcessorTest {
                 2.0, 800, 18, 25, FlightCategory.IFR, "raw")));
 
         var p = new DelayEventProcessor(realComputer, disruptionScoreService,
-                eventProducer, cascadeDetector, realCache);
+                eventProducer, cascadeDetector, realCache, historicalDelayWriter);
         when(cascadeDetector.checkCascade(any())).thenReturn(Optional.empty());
 
         var arrival = new ResolvedArrival("abc123", "UAL1234", "UA", "1234",
@@ -128,6 +131,18 @@ class DelayEventProcessorTest {
     }
 
     @Test
+    void shouldBufferDelayEventForHistoricalStorage() {
+        var arrival = resolvedArrival(900);
+        var event = delayEvent(900);
+        when(delayComputer.compute(eq(arrival), any())).thenReturn(event);
+        when(cascadeDetector.checkCascade(event)).thenReturn(Optional.empty());
+
+        processor.process(arrival);
+
+        verify(historicalDelayWriter).buffer(any(DelayEvent.class));
+    }
+
+    @Test
     void shouldEmitEventWithoutWeatherOnCacheMiss() {
         DelayComputer realComputer = new DelayComputer();
         var props = new skytrack.demo.config.WeatherProperties(
@@ -135,7 +150,7 @@ class DelayEventProcessorTest {
         WeatherCache emptyCache = new WeatherCache(props, Clock.systemUTC());
 
         var p = new DelayEventProcessor(realComputer, disruptionScoreService,
-                eventProducer, cascadeDetector, emptyCache);
+                eventProducer, cascadeDetector, emptyCache, historicalDelayWriter);
         when(cascadeDetector.checkCascade(any())).thenReturn(Optional.empty());
 
         var arrival = new ResolvedArrival("abc123", "UAL1234", "UA", "1234",
