@@ -27,7 +27,8 @@ class CascadeDetectorTest {
                 "KORD", "ORD", 1709312400L,
                 1709312400L - delaySeconds, delaySeconds,
                 DelayClassification.fromDelaySeconds(delaySeconds),
-                "AEROAPI", Instant.now());
+                "AEROAPI", Instant.now(),
+                null, null, null, null);
     }
 
     @Test
@@ -52,7 +53,8 @@ class CascadeDetectorTest {
     void shouldNotEmitForNullDelay() {
         var event = new DelayEvent("abc123", "UAL1234", "UA", "1234",
                 "KORD", "ORD", 1709312400L, null, null,
-                DelayClassification.UNKNOWN, "UNRESOLVED", Instant.now());
+                DelayClassification.UNKNOWN, "UNRESOLVED", Instant.now(),
+                null, null, null, null);
         assertThat(detector.checkCascade(event)).isEmpty();
     }
 

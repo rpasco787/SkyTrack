@@ -61,7 +61,8 @@ class SqsAirportEventProducerTest {
     void shouldPublishDelayEventToQueue() {
         var event = new DelayEvent("abc123", "UAL1234", "UA", "1234",
                 "KORD", "ORD", 1709312400L, 1709311500L, 900L,
-                DelayClassification.MODERATE, "AEROAPI", Instant.now());
+                DelayClassification.MODERATE, "AEROAPI", Instant.now(),
+                null, null, null, null);
 
         producer.send(event);
 
@@ -81,7 +82,8 @@ class SqsAirportEventProducerTest {
     void shouldUseAirportCodeAsMessageGroupId() {
         var event = new DelayEvent("def456", "DAL567", "DL", "567",
                 "KLAX", "LAX", 1709312500L, 1709311600L, 900L,
-                DelayClassification.MODERATE, "AEROAPI", Instant.now());
+                DelayClassification.MODERATE, "AEROAPI", Instant.now(),
+                null, null, null, null);
 
         producer.send(event);
 

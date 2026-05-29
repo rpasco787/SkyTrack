@@ -41,7 +41,8 @@ class DelayEventProcessorTest {
                 "KORD", "ORD", 1709312400L,
                 1709312400L - delaySeconds, delaySeconds,
                 DelayClassification.fromDelaySeconds(delaySeconds),
-                "AEROAPI", Instant.now());
+                "AEROAPI", Instant.now(),
+                null, null, null, null);
     }
 
     @Test
@@ -81,7 +82,8 @@ class DelayEventProcessorTest {
                 "KORD", "ORD", 1709312400L, null, null, "UNRESOLVED");
         var event = new DelayEvent("abc123", "ZZZ999", null, null,
                 "KORD", "ORD", 1709312400L, null, null,
-                DelayClassification.UNKNOWN, "UNRESOLVED", Instant.now());
+                DelayClassification.UNKNOWN, "UNRESOLVED", Instant.now(),
+                null, null, null, null);
 
         when(delayComputer.compute(arrival)).thenReturn(event);
         when(cascadeDetector.checkCascade(event)).thenReturn(Optional.empty());

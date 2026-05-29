@@ -27,7 +27,8 @@ class DisruptionScoreServiceTest {
         return new DelayEvent("abc123", "UAL1234", "UA", "1234",
                 "K" + airport, airport, arrivalTime,
                 arrivalTime - delaySeconds, delaySeconds,
-                classification, "AEROAPI", Instant.ofEpochSecond(arrivalTime));
+                classification, "AEROAPI", Instant.ofEpochSecond(arrivalTime),
+                null, null, null, null);
     }
 
     @Test
@@ -140,7 +141,8 @@ class DisruptionScoreServiceTest {
     void shouldIgnoreNullAirportCode() {
         var event = new DelayEvent("abc123", "UAL1234", "UA", "1234",
                 "KORD", null, 1709312400L, null, null,
-                DelayClassification.UNKNOWN, "UNRESOLVED", Instant.now());
+                DelayClassification.UNKNOWN, "UNRESOLVED", Instant.now(),
+                null, null, null, null);
         service.recordDelay(event);
         // Should not throw
     }

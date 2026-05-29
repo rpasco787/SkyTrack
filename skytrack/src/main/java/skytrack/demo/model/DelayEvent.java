@@ -17,4 +17,9 @@ public record DelayEvent(
         Long delaySeconds,
         DelayClassification classification,
         String resolutionMethod,
-        Instant createdAt) {}
+        Instant createdAt,
+        FlightCategory flightCategory,
+        Double visibilityStatuteMiles,
+        Integer ceilingFeet,
+        Integer windSpeedKnots
+) {}

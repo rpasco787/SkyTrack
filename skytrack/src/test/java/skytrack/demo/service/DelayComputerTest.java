@@ -2,7 +2,12 @@ package skytrack.demo.service;
 
 import org.junit.jupiter.api.Test;
 import skytrack.demo.model.DelayClassification;
+import skytrack.demo.model.FlightCategory;
 import skytrack.demo.model.ResolvedArrival;
+import skytrack.demo.model.WeatherObservation;
+
+import java.time.Instant;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -91,5 +96,34 @@ class DelayComputerTest {
         assertThat(event.classification()).isEqualTo(DelayClassification.MODERATE);
         assertThat(event.resolutionMethod()).isEqualTo("ROUTE_AVERAGE");
         assertThat(event.scheduledArrivalTime()).isNull();
+    }
+
+    @Test
+    void shouldEnrichWithWeatherWhenProvided() {
+        var arrival = new ResolvedArrival("abc123", "UAL1234", "UA", "1234",
+                "KORD", "ORD", 1709312400L, 1709311500L, 900L, "API_CACHE");
+        var weather = new WeatherObservation("KORD", "ORD",
+                Instant.parse("2026-05-05T15:00:00Z"),
+                2.0, 800, 18, 25, FlightCategory.IFR, "raw");
+
+        var event = computer.compute(arrival, Optional.of(weather));
+
+        assertThat(event.flightCategory()).isEqualTo(FlightCategory.IFR);
+        assertThat(event.visibilityStatuteMiles()).isEqualTo(2.0);
+        assertThat(event.ceilingFeet()).isEqualTo(800);
+        assertThat(event.windSpeedKnots()).isEqualTo(18);
+    }
+
+    @Test
+    void shouldLeaveWeatherFieldsNullWhenAbsent() {
+        var arrival = new ResolvedArrival("abc123", "UAL1234", "UA", "1234",
+                "KORD", "ORD", 1709312400L, 1709311500L, 900L, "API_CACHE");
+
+        var event = computer.compute(arrival, Optional.empty());
+
+        assertThat(event.flightCategory()).isNull();
+        assertThat(event.visibilityStatuteMiles()).isNull();
+        assertThat(event.ceilingFeet()).isNull();
+        assertThat(event.windSpeedKnots()).isNull();
     }
 }
