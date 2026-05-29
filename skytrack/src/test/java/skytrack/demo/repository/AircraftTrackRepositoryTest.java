@@ -124,4 +124,24 @@ class AircraftTrackRepositoryTest {
         assertThat(found.getUpdatedAt()).isGreaterThanOrEqualTo(beforeSave);
         assertThat(found.getTtl()).isGreaterThan(found.getUpdatedAt());
     }
+
+    @Test
+    void shouldFindTrackByCallsign() {
+        AircraftTrack t1 = AircraftTrack.initial("aaa111");
+        t1.setCallsign("UAL100");
+        repository.save(t1);
+
+        AircraftTrack t2 = AircraftTrack.initial("bbb222");
+        t2.setCallsign("DAL200");
+        repository.save(t2);
+
+        Optional<AircraftTrack> found = repository.findByCallsign("DAL200");
+        assertThat(found).isPresent();
+        assertThat(found.get().getIcao24()).isEqualTo("bbb222");
+    }
+
+    @Test
+    void shouldReturnEmptyWhenCallsignNotFound() {
+        assertThat(repository.findByCallsign("ZZZ999")).isEmpty();
+    }
 }

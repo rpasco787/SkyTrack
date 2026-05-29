@@ -3,7 +3,10 @@ package skytrack.demo.repository;
 import org.springframework.stereotype.Repository;
 import skytrack.demo.model.AircraftTrack;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
+import software.amazon.awssdk.enhanced.dynamodb.Expression;
 import software.amazon.awssdk.enhanced.dynamodb.Key;
+import software.amazon.awssdk.enhanced.dynamodb.model.ScanEnhancedRequest;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -15,6 +18,18 @@ public class AircraftTrackRepository {
 
     public AircraftTrackRepository(DynamoDbTable<AircraftTrack> table) {
         this.table = table;
+    }
+
+    public Optional<AircraftTrack> findByCallsign(String callsign) {
+        Expression filter = Expression.builder()
+                .expression("callsign = :cs")
+                .putExpressionValue(":cs", AttributeValue.builder().s(callsign).build())
+                .build();
+        return table.scan(ScanEnhancedRequest.builder()
+                        .filterExpression(filter)
+                        .build())
+                .items().stream()
+                .findFirst();
     }
 
     public Optional<AircraftTrack> findByIcao24(String icao24) {
