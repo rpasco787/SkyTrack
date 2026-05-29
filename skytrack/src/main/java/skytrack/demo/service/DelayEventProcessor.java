@@ -3,8 +3,12 @@ package skytrack.demo.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import skytrack.demo.model.DelayEvent;
 import skytrack.demo.model.ResolvedArrival;
+import skytrack.demo.model.WeatherObservation;
 import skytrack.demo.sqs.SqsAirportEventProducer;
+
+import java.util.Optional;
 
 @Service
 public class DelayEventProcessor {
@@ -15,19 +19,23 @@ public class DelayEventProcessor {
     private final DisruptionScoreService disruptionScoreService;
     private final SqsAirportEventProducer eventProducer;
     private final CascadeDetector cascadeDetector;
+    private final WeatherCache weatherCache;
 
     public DelayEventProcessor(DelayComputer delayComputer,
                                DisruptionScoreService disruptionScoreService,
                                SqsAirportEventProducer eventProducer,
-                               CascadeDetector cascadeDetector) {
+                               CascadeDetector cascadeDetector,
+                               WeatherCache weatherCache) {
         this.delayComputer = delayComputer;
         this.disruptionScoreService = disruptionScoreService;
         this.eventProducer = eventProducer;
         this.cascadeDetector = cascadeDetector;
+        this.weatherCache = weatherCache;
     }
 
     public void process(ResolvedArrival arrival) {
-        var delayEvent = delayComputer.compute(arrival);
+        Optional<WeatherObservation> weather = weatherCache.get(arrival.arrivalAirportIcao());
+        DelayEvent delayEvent = delayComputer.compute(arrival, weather);
 
         disruptionScoreService.recordDelay(delayEvent);
         eventProducer.send(delayEvent);
@@ -37,9 +45,10 @@ public class DelayEventProcessor {
                         alert.sourceCallsign(), alert.arrivalAirportIata(),
                         alert.predictedDownstreamDelaySeconds() / 60));
 
-        log.debug("Processed delay event: {} {} at {} classification={} delay={}s",
+        log.debug("Processed delay event: {} {} at {} classification={} delay={}s weather={}",
                 delayEvent.carrierCode(), delayEvent.flightNumber(),
                 delayEvent.arrivalAirportIata(), delayEvent.classification(),
-                delayEvent.delaySeconds());
+                delayEvent.delaySeconds(),
+                delayEvent.flightCategory());
     }
 }
