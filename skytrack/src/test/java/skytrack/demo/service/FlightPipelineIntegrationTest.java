@@ -107,8 +107,10 @@ class FlightPipelineIntegrationTest {
         disruptionScoreService = new DisruptionScoreService(disruptionProps);
         mockEventProducer = mock(SqsAirportEventProducer.class);
         var cascadeDetector = new CascadeDetector(disruptionProps);
+        var weatherCache = mock(WeatherCache.class);
+        org.mockito.Mockito.when(weatherCache.get(any())).thenReturn(Optional.empty());
         var delayEventProcessor = new DelayEventProcessor(
-                delayComputer, disruptionScoreService, mockEventProducer, cascadeDetector);
+                delayComputer, disruptionScoreService, mockEventProducer, cascadeDetector, weatherCache);
 
         handler = new StatefulFlightPositionHandler(
                 repository, stateMachine, scheduleResolver, delayEventProcessor);

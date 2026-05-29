@@ -91,6 +91,19 @@
 			<artifactId>dynamodb-enhanced</artifactId>
 		</dependency>
 
+		<!-- AWS SDK v2 - S3 (historical Parquet storage) -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
+		</dependency>
+
+		<!-- Carpet - record-based Parquet, no Hadoop stack -->
+		<dependency>
+			<groupId>com.jerolba</groupId>
+			<artifactId>carpet-record</artifactId>
+			<version>0.4.0</version>
+		</dependency>
+
 		<!-- WireMock for AeroAPI integration tests -->
 		<dependency>
 			<groupId>org.wiremock</groupId>
