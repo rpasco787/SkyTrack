@@ -27,8 +27,13 @@ replay_pid*
 
 skytrack-learning-roadmap.md
 .gitignore
-data
+data/*
+!data/recorded-weather/
+!data/recorded-weather/**
 
 # LocalStack
 localstack/volume/
 .localstack/
+
+# Generated WireMock schedule stubs (regenerate via WireMockStubGeneratorIT)
+wiremock/generated/

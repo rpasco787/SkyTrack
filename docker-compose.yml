@@ -6,6 +6,7 @@ services:
     volumes:
       - "./wiremock/mappings:/home/wiremock/mappings"
       - "./wiremock/__files:/home/wiremock/__files"
+      - "./wiremock/generated:/home/wiremock/mappings/generated"
     command: ["--verbose"]
 
   localstack:
