@@ -28,6 +28,9 @@ replay_pid*
 # macOS
 .DS_Store
 
+# Local docs (plans, results, roadmaps) — not tracked
+docs/
+
 skytrack-learning-roadmap.md
 .gitignore
 data/*
