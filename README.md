@@ -234,16 +234,6 @@ From the [synthetic schedule demo run](docs/2026-06-16-synthetic-schedule-demo-r
 | Cascade alerts | firing across ORD, SFO, BNA, PHX, … |
 | Test suite | **233 tests, 0 failures** (1 gated integration test skipped) |
 
-## Architecture decision records
-
-Key trade-offs are documented as ADRs in [docs/adr/](docs/adr/):
-
-1. [SQS FIFO over Kinesis](docs/adr/0001-sqs-fifo-over-kinesis.md)
-2. [Single-table DynamoDB](docs/adr/0002-single-table-dynamodb.md)
-3. [Synthetic + BTS over a paid flight API](docs/adr/0003-synthetic-and-bts-over-paid-api.md)
-4. [In-memory sliding windows for disruption scores](docs/adr/0004-in-memory-sliding-windows.md)
-5. [Local-first with LocalStack + WireMock](docs/adr/0005-local-first-localstack-wiremock.md)
-
 ## License
 
 [MIT](LICENSE)
