@@ -25,6 +25,9 @@ hs_err_pid*
 replay_pid*
 .vscode
 
+# macOS
+.DS_Store
+
 skytrack-learning-roadmap.md
 .gitignore
 data/*
