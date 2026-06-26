@@ -112,9 +112,15 @@ function renderMarkers(disruptions) {
     if (markers.has(iata)) {
       // Diff-update existing marker in place — no flicker
       const m = markers.get(iata);
-      m.setStyle({ fillColor: color, color: isTop ? color : 'rgba(0,0,0,0.35)' });
+      m.setStyle({ fillColor: color, color: isTop ? color : 'rgba(0,0,0,0.35)', weight: isTop ? 2.5 : 1 });
       m.setRadius(radius);
       m.setTooltipContent(tooltipText);
+      // Keep glow class in sync as #1 position changes across polls
+      const el = m.getElement();
+      if (el) {
+        if (isTop) L.DomUtil.addClass(el, 'marker-top');
+        else L.DomUtil.removeClass(el, 'marker-top');
+      }
     } else {
       if (!coord) return; // no coordinates — skip map pin but leaderboard still shows it
 
@@ -161,7 +167,7 @@ function renderLeaderboard(top10) {
     const trend = trendArrow(d.trendDirection ?? 0);
 
     const li = document.createElement('li');
-    li.className = 'lb-row' + (iata === selectedIata ? ' is-selected' : '');
+    li.className = 'lb-row' + (iata === selectedIata ? ' is-selected' : '') + (i === 0 ? ' lb-row--top' : '');
     li.dataset.iata = iata;
     li.innerHTML = `
       <span class="lb-rank">${i + 1}</span>
@@ -212,7 +218,7 @@ function renderDetail(iata, status) {
   const color = scoreColor(score);
 
   let html = `
-    <div class="detail-header" style="border-left: 3px solid ${color}; padding-left: 11px;">
+    <div class="detail-header" style="--hdr-color:${color}">
       <div class="detail-header__iata" style="color:${color}">${iata}</div>
       <div class="detail-header__name">${name}</div>
       <div class="detail-header__score-row">
