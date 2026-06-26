@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SkyTrack — US Disruption Monitor</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="map"></div>
+
+  <!-- Top-left: leaderboard -->
+  <aside id="leaderboard" class="panel panel--leaderboard">
+    <header class="panel__header">
+      <span class="panel__label">TOP 10 DISRUPTED</span>
+      <span id="lb-count" class="panel__meta">—</span>
+    </header>
+    <ol id="lb-list" class="lb-list"></ol>
+  </aside>
+
+  <!-- Top-right: flight search + refresh status -->
+  <div id="topbar" class="panel panel--topbar">
+    <form id="flight-form" class="search-form" autocomplete="off">
+      <input id="callsign-input" class="search-input" type="text"
+             placeholder="callsign search…" maxlength="16" spellcheck="false">
+      <button type="submit" class="search-btn">↗</button>
+    </form>
+    <div id="flight-result" class="flight-result" hidden></div>
+    <div class="status-row">
+      <span id="updated-label" class="updated-label">–</span>
+      <button id="refresh-btn" class="refresh-btn" title="Refresh now">↻</button>
+    </div>
+  </div>
+
+  <!-- Right slide-in: airport detail -->
+  <aside id="detail-panel" class="panel panel--detail">
+    <button id="detail-close" class="detail-close" aria-label="Close panel">✕</button>
+    <div id="detail-content" class="detail-content"></div>
+  </aside>
+
+  <!-- Empty-state overlay -->
+  <div id="empty-hint" class="empty-hint" hidden>
+    <span class="empty-hint__text">waiting for data…</span>
+  </div>
+
+  <!-- Connection-lost badge -->
+  <div id="conn-lost" class="conn-lost" hidden>connection lost — retrying</div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
