@@ -63,7 +63,7 @@ function scoreClass(score) {
 function trendArrow(trendDirection) {
   if (trendDirection >  0.05) return { sym: '▲', cls: 'score-red'   };
   if (trendDirection < -0.05) return { sym: '▼', cls: 'score-green' };
-  return { sym: '–', cls: 'score-class-muted' };
+  return { sym: '–', cls: 'score-muted' };
 }
 
 function markerRadius(activeDelayCount) {
@@ -112,7 +112,8 @@ function renderMarkers(disruptions) {
     if (markers.has(iata)) {
       // Diff-update existing marker in place — no flicker
       const m = markers.get(iata);
-      m.setStyle({ fillColor: color, color: isTop ? color : 'rgba(0,0,0,0.35)', radius });
+      m.setStyle({ fillColor: color, color: isTop ? color : 'rgba(0,0,0,0.35)' });
+      m.setRadius(radius);
       m.setTooltipContent(tooltipText);
     } else {
       if (!coord) return; // no coordinates — skip map pin but leaderboard still shows it

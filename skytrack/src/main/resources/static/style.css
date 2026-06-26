@@ -422,3 +422,4 @@ body::after {
 .score-amber  { color: var(--score-amber);  }
 .score-orange { color: var(--score-orange); }
 .score-red    { color: var(--score-red);    }
+.score-muted  { color: var(--text-muted);   }
