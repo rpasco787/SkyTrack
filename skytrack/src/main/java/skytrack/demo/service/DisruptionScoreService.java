@@ -32,51 +32,59 @@ public class DisruptionScoreService {
         if (event.arrivalAirportIata() == null) return;
 
         long bucketKey = toBucketKey(event.actualArrivalTime());
-        airportBuckets.computeIfAbsent(event.arrivalAirportIata(), k -> new TreeMap<>())
-                .computeIfAbsent(bucketKey, k -> new BucketMetrics())
-                .record(event);
+        TreeMap<Long, BucketMetrics> buckets =
+                airportBuckets.computeIfAbsent(event.arrivalAirportIata(), k -> new TreeMap<>());
+        synchronized (buckets) {
+            buckets.computeIfAbsent(bucketKey, k -> new BucketMetrics()).record(event);
+        }
     }
 
     public AirportDisruptionScore computeScore(String airportIata) {
         TreeMap<Long, BucketMetrics> buckets = airportBuckets.get(airportIata);
-        if (buckets == null || buckets.isEmpty()) {
+        if (buckets == null) {
             return emptyScore(airportIata);
         }
 
-        long latestBucket = buckets.lastKey();
-        long windowStart = latestBucket - (props.windowMinutes() * 60L);
-        evictExpiredBuckets(buckets, windowStart);
+        synchronized (buckets) {
+            if (buckets.isEmpty()) {
+                return emptyScore(airportIata);
+            }
 
-        if (buckets.isEmpty()) {
-            return emptyScore(airportIata);
+            long latestBucket = buckets.lastKey();
+            long windowStart = latestBucket - (props.windowMinutes() * 60L);
+            evictExpiredBuckets(buckets, windowStart);
+
+            if (buckets.isEmpty()) {
+                return emptyScore(airportIata);
+            }
+
+            int totalFlights = 0;
+            int delayedFlights = 0;
+            long totalDelaySeconds = 0;
+
+            for (BucketMetrics bucket : buckets.values()) {
+                totalFlights += bucket.totalFlights;
+                delayedFlights += bucket.delayedFlights;
+                totalDelaySeconds += bucket.totalDelaySeconds;
+            }
+
+            double avgDelayMinutes = totalFlights > 0
+                    ? (totalDelaySeconds / 60.0) / totalFlights : 0;
+            double delayedPct = totalFlights > 0
+                    ? (double) delayedFlights / totalFlights : 0;
+            double trend = computeTrend(buckets, windowStart, latestBucket);
+
+            double delayedFlightScore = Math.min(delayedFlights / 10.0, 1.0) * 30;
+            double severityScore = Math.min(avgDelayMinutes / 60.0, 1.0) * 30;
+            double trendScore = Math.max(Math.min(trend, 1.0), 0.0) * 20;
+            double percentageScore = delayedPct * 20;
+            double score = Math.min(
+                    delayedFlightScore + severityScore + trendScore + percentageScore, 100.0);
+
+            return new AirportDisruptionScore(
+                    airportIata, score, delayedFlights, totalFlights,
+                    avgDelayMinutes, trend, Instant.now());
         }
-
-        int totalFlights = 0;
-        int delayedFlights = 0;
-        long totalDelaySeconds = 0;
-
-        for (BucketMetrics bucket : buckets.values()) {
-            totalFlights += bucket.totalFlights;
-            delayedFlights += bucket.delayedFlights;
-            totalDelaySeconds += bucket.totalDelaySeconds;
-        }
-
-        double avgDelayMinutes = totalFlights > 0
-                ? (totalDelaySeconds / 60.0) / totalFlights : 0;
-        double delayedPct = totalFlights > 0
-                ? (double) delayedFlights / totalFlights : 0;
-        double trend = computeTrend(buckets, windowStart, latestBucket);
-
-        double delayedFlightScore = Math.min(delayedFlights / 10.0, 1.0) * 30;
-        double severityScore = Math.min(avgDelayMinutes / 60.0, 1.0) * 30;
-        double trendScore = Math.max(Math.min(trend, 1.0), 0.0) * 20;
-        double percentageScore = delayedPct * 20;
-        double score = Math.min(
-                delayedFlightScore + severityScore + trendScore + percentageScore, 100.0);
-
-        return new AirportDisruptionScore(
-                airportIata, score, delayedFlights, totalFlights,
-                avgDelayMinutes, trend, Instant.now());
     }
 
     public List<AirportDisruptionScore> getTopDisruptedAirports(int limit) {
