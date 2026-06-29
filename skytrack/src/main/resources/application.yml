@@ -4,6 +4,7 @@ spring:
 
 opensky:
   mode: replay
+  poll-rate-ms: 30000   # producer snapshot cadence; lower = faster replay
 
 sqs:
   positions-queue-name: skytrack-positions.fifo

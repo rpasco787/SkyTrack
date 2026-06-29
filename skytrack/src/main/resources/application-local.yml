@@ -2,6 +2,7 @@ opensky:
   mode: replay
   replay-dir: ./data/recorded-opensky/
   replay-speed-multiplier: 1
+  poll-rate-ms: 2000    # 15x faster than prod default for local replay
 
 sqs:
   endpoint: http://localhost:4566

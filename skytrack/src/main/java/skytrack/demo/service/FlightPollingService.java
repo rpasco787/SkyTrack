@@ -23,7 +23,7 @@ public class FlightPollingService {
         this.sqsPositionProducer = sqsPositionProducer;
     }
 
-    @Scheduled(fixedRate = 30_000)
+    @Scheduled(fixedRateString = "${opensky.poll-rate-ms:30000}")
     public void pollFlightData() {
         try {
             List<FlightPosition> positions = flightDataSource.fetchPositions();
