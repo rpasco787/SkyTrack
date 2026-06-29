@@ -13,6 +13,8 @@ import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.GetQueueUrlRequest;
 
 import java.net.URI;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Configuration
 public class SqsConfig {
@@ -48,6 +50,16 @@ public class SqsConfig {
                                                     FlightPositionHandler handler) {
         String queueUrl = resolveQueueUrl(sqsClient, properties.positionsQueueName());
         return new SqsPositionConsumer(sqsClient, queueUrl, handler);
+    }
+
+    @Bean(destroyMethod = "shutdown")
+    public ExecutorService sqsConsumerPool(SqsProperties properties) {
+        int threads = Math.max(properties.consumerThreads(), 1);
+        return Executors.newFixedThreadPool(threads, r -> {
+            Thread t = new Thread(r, "sqs-consumer");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     private String resolveQueueUrl(SqsClient sqsClient, String queueName) {

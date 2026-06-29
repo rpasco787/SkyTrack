@@ -13,7 +13,8 @@ class SqsConfigTest {
                 "http://localhost:4566",
                 "us-east-1",
                 "skytrack-positions.fifo",
-                "skytrack-airport-events.fifo"
+                "skytrack-airport-events.fifo",
+                1
         );
         var config = new SqsConfig();
 
