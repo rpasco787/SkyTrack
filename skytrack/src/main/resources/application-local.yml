@@ -7,6 +7,7 @@ opensky:
 sqs:
   endpoint: http://localhost:4566
   region: us-east-1
+  consumer-threads: 4
 
 aeroapi:
   enabled: true
