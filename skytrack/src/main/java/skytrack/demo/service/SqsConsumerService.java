@@ -29,7 +29,7 @@ public class SqsConsumerService {
                               SqsProperties properties) {
         this.consumer = consumer;
         this.consumerPool = consumerPool;
-        this.consumerThreads = Math.max(properties.consumerThreads(), 1);
+        this.consumerThreads = properties.consumerThreads();
     }
 
     @Scheduled(fixedDelay = 1000)

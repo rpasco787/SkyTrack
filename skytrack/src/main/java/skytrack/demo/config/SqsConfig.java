@@ -54,7 +54,7 @@ public class SqsConfig {
 
     @Bean(destroyMethod = "shutdown")
     public ExecutorService sqsConsumerPool(SqsProperties properties) {
-        int threads = Math.max(properties.consumerThreads(), 1);
+        int threads = properties.consumerThreads();
         return Executors.newFixedThreadPool(threads, r -> {
             Thread t = new Thread(r, "sqs-consumer");
             t.setDaemon(true);
