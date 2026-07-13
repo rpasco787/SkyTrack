@@ -1,0 +1,90 @@
+package skytrack.demo.parquet;
+
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import skytrack.demo.config.S3Properties;
+import skytrack.demo.model.DelayClassification;
+import skytrack.demo.model.PredictedDelayEvent;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+
+class HistoricalPredictionWriterTest {
+
+    private final Clock clock = Clock.fixed(Instant.parse("2026-03-09T20:30:00Z"), ZoneOffset.UTC);
+    private final S3Properties props =
+            new S3Properties("skytrack-history", "http://localhost:4566", "us-east-1", "delays", 300);
+
+    private static PredictedDelayEvent event(String iata) {
+        return new PredictedDelayEvent(
+                "UAL1234", "N12345", iata,
+                "UA", "5678",
+                1773088200L, 1773090000L, 2700L, 960L,
+                DelayClassification.MINOR, 900L, "BTS_REPLAY",
+                Instant.parse("2026-03-09T20:30:00Z"));
+    }
+
+    @Test
+    void shouldFlushBufferedEventsToS3WithPartitionedKey() {
+        S3Client s3 = mock(S3Client.class);
+        var writer = new HistoricalPredictionWriter(s3, new ParquetSerializer(), props, clock);
+
+        writer.buffer(event("ORD"));
+        writer.buffer(event("ATL"));
+        writer.flush();
+
+        ArgumentCaptor<PutObjectRequest> reqCaptor = ArgumentCaptor.forClass(PutObjectRequest.class);
+        ArgumentCaptor<RequestBody> bodyCaptor = ArgumentCaptor.forClass(RequestBody.class);
+        verify(s3).putObject(reqCaptor.capture(), bodyCaptor.capture());
+
+        PutObjectRequest req = reqCaptor.getValue();
+        assertThat(req.bucket()).isEqualTo("skytrack-history");
+        assertThat(req.key())
+                .startsWith("predictions/year=2026/month=03/day=09/hour=20/")
+                .endsWith(".parquet");
+        assertThat(bodyCaptor.getValue().optionalContentLength().orElse(0L)).isGreaterThan(0L);
+    }
+
+    @Test
+    void shouldNotCallS3WhenBufferEmpty() {
+        S3Client s3 = mock(S3Client.class);
+        var writer = new HistoricalPredictionWriter(s3, new ParquetSerializer(), props, clock);
+
+        writer.flush();
+
+        verify(s3, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    void shouldDrainBufferAfterFlush() {
+        S3Client s3 = mock(S3Client.class);
+        var writer = new HistoricalPredictionWriter(s3, new ParquetSerializer(), props, clock);
+
+        writer.buffer(event("ORD"));
+        writer.flush();
+        writer.flush();
+
+        verify(s3).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    void shouldSwallowS3Exceptions() {
+        S3Client s3 = mock(S3Client.class);
+        org.mockito.Mockito.when(s3.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(new RuntimeException("boom"));
+        var writer = new HistoricalPredictionWriter(s3, new ParquetSerializer(), props, clock);
+
+        writer.buffer(event("ORD"));
+        writer.flush();
+    }
+}

@@ -21,6 +21,14 @@ public class ParquetSerializer {
         return out.toByteArray();
     }
 
+    public byte[] serializePredictions(List<PredictionParquetRow> rows) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (var writer = new CarpetWriter<>(out, PredictionParquetRow.class)) {
+            writer.write(rows);
+        }
+        return out.toByteArray();
+    }
+
     /** Parquet requires random access on read, so bytes are staged to a temp file. */
     public List<DelayParquetRow> deserialize(byte[] bytes) throws IOException {
         Path tmp = Files.createTempFile("skytrack-parquet-", ".parquet");

@@ -28,7 +28,7 @@ class SqsConsumerServiceTest {
 
     private SqsConsumerService service(int threads) {
         pool = Executors.newFixedThreadPool(Math.max(threads, 1));
-        var props = new SqsProperties(null, null, null, null, threads);
+        var props = new SqsProperties(null, null, null, null, null, threads);
         return new SqsConsumerService(consumer, pool, props);
     }
 

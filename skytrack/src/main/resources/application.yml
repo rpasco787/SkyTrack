@@ -9,6 +9,7 @@ opensky:
 sqs:
   positions-queue-name: skytrack-positions.fifo
   airport-events-queue-name: skytrack-airport-events.fifo
+  prediction-queue-name: skytrack-predictions.fifo
   consumer-threads: 1   # parallel SQS poll dispatch; raise for high-throughput replay
 
 aeroapi:

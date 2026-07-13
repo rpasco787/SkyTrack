@@ -15,17 +15,19 @@ public class SqsAirportEventProducer {
 
     private final SqsClient sqsClient;
     private final String queueUrl;
+    private final String predictionQueueUrl;
 
-    public SqsAirportEventProducer(SqsClient sqsClient, String queueUrl) {
+    public SqsAirportEventProducer(SqsClient sqsClient, String queueUrl, String predictionQueueUrl) {
         this.sqsClient = sqsClient;
         this.queueUrl = queueUrl;
+        this.predictionQueueUrl = predictionQueueUrl;
     }
 
     public void send(PredictedDelayEvent event) {
         try {
             String body = mapper.writeValueAsString(event);
             sqsClient.sendMessage(SendMessageRequest.builder()
-                    .queueUrl(queueUrl)
+                    .queueUrl(predictionQueueUrl)
                     .messageBody(body)
                     .messageGroupId(event.departureAirportIata())
                     .messageDeduplicationId(event.inboundCallsign() + "-" + event.outboundScheduledDepEpoch())

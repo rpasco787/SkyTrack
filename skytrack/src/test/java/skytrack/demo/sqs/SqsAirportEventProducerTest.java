@@ -49,7 +49,7 @@ class SqsAirportEventProducerTest {
                         QueueAttributeName.CONTENT_BASED_DEDUPLICATION, "true"))
                 .build()).queueUrl();
 
-        producer = new SqsAirportEventProducer(sqsClient, queueUrl);
+        producer = new SqsAirportEventProducer(sqsClient, queueUrl, queueUrl);
     }
 
     @AfterAll

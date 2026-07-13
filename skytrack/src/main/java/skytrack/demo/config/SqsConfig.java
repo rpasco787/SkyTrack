@@ -42,7 +42,8 @@ public class SqsConfig {
     @Bean
     public SqsAirportEventProducer sqsAirportEventProducer(SqsClient sqsClient, SqsProperties properties) {
         String queueUrl = resolveQueueUrl(sqsClient, properties.airportEventsQueueName());
-        return new SqsAirportEventProducer(sqsClient, queueUrl);
+        String predictionQueueUrl = resolveQueueUrl(sqsClient, properties.predictionQueueName());
+        return new SqsAirportEventProducer(sqsClient, queueUrl, predictionQueueUrl);
     }
 
     @Bean
