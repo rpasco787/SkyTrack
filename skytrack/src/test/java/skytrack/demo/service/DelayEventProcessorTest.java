@@ -35,6 +35,7 @@ class DelayEventProcessorTest {
     @Mock private HistoricalDelayWriter historicalDelayWriter;
     @Mock private ScheduleCoverageTracker coverageTracker;
     @Mock private RecentCascadeStore recentCascadeStore;
+    @Mock private DelayPredictionService delayPredictionService;
 
     private DelayEventProcessor processor;
 
@@ -43,7 +44,8 @@ class DelayEventProcessorTest {
         lenient().when(weatherCache.get(anyString())).thenReturn(Optional.empty());
         processor = new DelayEventProcessor(
                 delayComputer, disruptionScoreService, eventProducer, cascadeDetector,
-                weatherCache, historicalDelayWriter, coverageTracker, recentCascadeStore);
+                weatherCache, historicalDelayWriter, coverageTracker, recentCascadeStore,
+                delayPredictionService);
     }
 
     private ResolvedArrival resolvedArrival(long delaySeconds) {
@@ -122,7 +124,8 @@ class DelayEventProcessorTest {
                 2.0, 800, 18, 25, FlightCategory.IFR, "raw")));
 
         var p = new DelayEventProcessor(realComputer, disruptionScoreService,
-                eventProducer, cascadeDetector, realCache, historicalDelayWriter, coverageTracker, recentCascadeStore);
+                eventProducer, cascadeDetector, realCache, historicalDelayWriter, coverageTracker, recentCascadeStore,
+                delayPredictionService);
         when(cascadeDetector.checkCascade(any())).thenReturn(Optional.empty());
 
         var arrival = new ResolvedArrival("abc123", "UAL1234", "UA", "1234",
@@ -133,6 +136,18 @@ class DelayEventProcessorTest {
         verify(eventProducer).send(captor.capture());
         assertThat(captor.getValue().flightCategory()).isEqualTo(FlightCategory.IFR);
         assertThat(captor.getValue().ceilingFeet()).isEqualTo(800);
+    }
+
+    @Test
+    void shouldTriggerDeparturePredictionOnLanding() {
+        var arrival = resolvedArrival(900);
+        var event = delayEvent(900);
+        when(delayComputer.compute(eq(arrival), any())).thenReturn(event);
+        when(cascadeDetector.checkCascade(event)).thenReturn(Optional.empty());
+
+        processor.process(arrival);
+
+        verify(delayPredictionService).predictNextDeparture(arrival);
     }
 
     @Test
@@ -167,7 +182,8 @@ class DelayEventProcessorTest {
         WeatherCache emptyCache = new WeatherCache(props, Clock.systemUTC());
 
         var p = new DelayEventProcessor(realComputer, disruptionScoreService,
-                eventProducer, cascadeDetector, emptyCache, historicalDelayWriter, coverageTracker, recentCascadeStore);
+                eventProducer, cascadeDetector, emptyCache, historicalDelayWriter, coverageTracker, recentCascadeStore,
+                delayPredictionService);
         when(cascadeDetector.checkCascade(any())).thenReturn(Optional.empty());
 
         var arrival = new ResolvedArrival("abc123", "UAL1234", "UA", "1234",

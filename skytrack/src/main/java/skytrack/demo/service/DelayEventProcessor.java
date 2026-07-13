@@ -24,6 +24,7 @@ public class DelayEventProcessor {
     private final HistoricalDelayWriter historicalDelayWriter;
     private final ScheduleCoverageTracker coverageTracker;
     private final RecentCascadeStore recentCascadeStore;
+    private final DelayPredictionService delayPredictionService;
 
     public DelayEventProcessor(DelayComputer delayComputer,
                                DisruptionScoreService disruptionScoreService,
@@ -32,7 +33,8 @@ public class DelayEventProcessor {
                                WeatherCache weatherCache,
                                HistoricalDelayWriter historicalDelayWriter,
                                ScheduleCoverageTracker coverageTracker,
-                               RecentCascadeStore recentCascadeStore) {
+                               RecentCascadeStore recentCascadeStore,
+                               DelayPredictionService delayPredictionService) {
         this.delayComputer = delayComputer;
         this.disruptionScoreService = disruptionScoreService;
         this.eventProducer = eventProducer;
@@ -41,6 +43,7 @@ public class DelayEventProcessor {
         this.historicalDelayWriter = historicalDelayWriter;
         this.coverageTracker = coverageTracker;
         this.recentCascadeStore = recentCascadeStore;
+        this.delayPredictionService = delayPredictionService;
     }
 
     public void process(ResolvedArrival arrival) {
@@ -58,6 +61,8 @@ public class DelayEventProcessor {
                     alert.sourceCallsign(), alert.arrivalAirportIata(),
                     alert.predictedDownstreamDelaySeconds() / 60);
         });
+
+        delayPredictionService.predictNextDeparture(arrival);
 
         log.debug("Processed delay event: {} {} at {} classification={} delay={}s weather={}",
                 delayEvent.carrierCode(), delayEvent.flightNumber(),

@@ -115,7 +115,8 @@ class FlightPipelineIntegrationTest {
                 delayComputer, disruptionScoreService, mockEventProducer, cascadeDetector, weatherCache,
                 mock(skytrack.demo.parquet.HistoricalDelayWriter.class),
                 mock(ScheduleCoverageTracker.class),
-                mock(RecentCascadeStore.class));
+                mock(RecentCascadeStore.class),
+                mock(DelayPredictionService.class));
 
         handler = new StatefulFlightPositionHandler(
                 repository, stateMachine, scheduleResolver, delayEventProcessor);
