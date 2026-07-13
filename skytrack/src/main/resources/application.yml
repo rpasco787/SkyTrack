@@ -36,6 +36,11 @@ skytrack:
     delay-threshold-minutes: 15
     cascade-threshold-minutes: 30
     cascade-propagation-factor: 0.85
+  prediction:
+    enabled: false
+    bts-csv-path: data/bts/ontime-2026-03-09.csv
+    min-turnaround-minutes: 45
+    delay-threshold-minutes: 15
 
 weather:
   mode: replay

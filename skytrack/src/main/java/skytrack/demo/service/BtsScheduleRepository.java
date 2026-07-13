@@ -2,7 +2,13 @@ package skytrack.demo.service;
 
 import skytrack.demo.model.BtsFlightRecord;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,4 +44,29 @@ public class BtsScheduleRepository {
     }
 
     public int size() { return all.size(); }
+
+    public static BtsScheduleRepository empty() {
+        return new BtsScheduleRepository(List.of());
+    }
+
+    public static BtsScheduleRepository fromCsv(String path, AirportTimeZoneResolver tz) {
+        var parser = new BtsRowParser(tz::zoneFor);
+        var records = new ArrayList<BtsFlightRecord>();
+        try (var reader = new BufferedReader(new FileReader(path, StandardCharsets.UTF_8))) {
+            String header = reader.readLine();
+            if (header == null) return empty();
+            String[] cols = header.split(",", -1);
+            Map<String, Integer> idx = new HashMap<>();
+            for (int i = 0; i < cols.length; i++) {
+                idx.put(cols[i].replace("\"", "").trim(), i);
+            }
+            String line;
+            while ((line = reader.readLine()) != null) {
+                parser.parse(line.split(",", -1), idx).ifPresent(records::add);
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to load BTS CSV: " + path, e);
+        }
+        return new BtsScheduleRepository(records);
+    }
 }
