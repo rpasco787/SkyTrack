@@ -9,11 +9,16 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import skytrack.demo.model.DelayClassification;
 import skytrack.demo.model.PredictedDelayEvent;
+import skytrack.demo.model.PredictionAccuracySummary;
+import skytrack.demo.service.PredictionAccuracyService;
 import skytrack.demo.service.RecentPredictionStore;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -23,12 +28,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PredictionControllerTest {
 
     @Mock RecentPredictionStore recentPredictionStore;
+    @Mock PredictionAccuracyService accuracyService;
 
     MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new PredictionController(recentPredictionStore)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                new PredictionController(recentPredictionStore, accuracyService)).build();
     }
 
     @Test
@@ -56,5 +63,21 @@ class PredictionControllerTest {
         mockMvc.perform(get("/predictions/ZZZ"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
+    void shouldReturnAccuracySummary() throws Exception {
+        var summary = new PredictionAccuracySummary("ORD", 5, 3, 450.0,
+                Map.of("MODERATE", Map.of("MINOR", 2), "MAJOR", Map.of("MAJOR", 1)));
+
+        when(recentPredictionStore.getRecent(eq("ORD"))).thenReturn(List.of());
+        when(accuracyService.summarize(eq("ORD"), any())).thenReturn(summary);
+
+        mockMvc.perform(get("/predictions/ORD/accuracy"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.airportIata").value("ORD"))
+                .andExpect(jsonPath("$.totalPredictions").value(5))
+                .andExpect(jsonPath("$.backtestableCount").value(3))
+                .andExpect(jsonPath("$.meanAbsoluteErrorSeconds").value(450.0));
     }
 }
