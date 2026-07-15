@@ -7,5 +7,6 @@ public record BtsFlightRecord(
         String origin,
         String dest,
         long scheduledDepEpoch,
+        Long scheduledArrEpoch,
         Long actualDepDelaySeconds,
         boolean cancelled) {}

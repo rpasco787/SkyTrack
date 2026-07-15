@@ -6,6 +6,8 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
@@ -31,13 +33,24 @@ public class BtsRowParser {
         boolean cancelled = "1.00".equals(at(row, idx, "CANCELLED")) || "1".equals(at(row, idx, "CANCELLED"));
         Long delaySeconds = cancelled ? null : minutesToSeconds(at(row, idx, "DEP_DELAY"));
 
+        String dest = at(row, idx, "DEST");
+        String crsArr = at(row, idx, "CRS_ARR_TIME");
+        Long arrEpoch = zoneLookup.apply(dest)
+                .map(z -> toEpoch(flDate, crsArr, z))
+                .orElse(null);
+        // BTS FL_DATE is departure date; an overnight leg has arrEpoch before depEpoch in epoch terms.
+        if (arrEpoch != null && arrEpoch < epoch) {
+            arrEpoch += 24 * 3600;
+        }
+
         return Optional.of(new BtsFlightRecord(
                 at(row, idx, "OP_UNIQUE_CARRIER"),
                 at(row, idx, "OP_CARRIER_FL_NUM"),
                 at(row, idx, "TAIL_NUM"),
                 origin,
-                at(row, idx, "DEST"),
+                dest,
                 epoch,
+                arrEpoch,
                 delaySeconds,
                 cancelled));
     }
@@ -47,11 +60,20 @@ public class BtsRowParser {
         return (i == null || i >= row.length) ? "" : row[i].trim();
     }
 
+    // BTS TranStats raw downloads encode FL_DATE as "M/d/yyyy h:mm:ss a" (always midnight).
+    private static final DateTimeFormatter BTS_DATE_FORMAT =
+            DateTimeFormatter.ofPattern("M/d/yyyy h:mm:ss a", Locale.US);
+
     private static Long toEpoch(String flDate, String hhmm, ZoneId zone) {
         if (flDate.isBlank() || hhmm.isBlank()) return null;
         try {
-            LocalDate date = LocalDate.parse(flDate);
-            int raw = Integer.parseInt(hhmm);
+            LocalDate date;
+            try {
+                date = LocalDate.parse(flDate);
+            } catch (Exception e) {
+                date = LocalDate.parse(flDate, BTS_DATE_FORMAT);
+            }
+            int raw = Integer.parseInt(hhmm.trim());
             if (raw == 2400) { date = date.plusDays(1); raw = 0; }  // BTS midnight encoding
             LocalTime time = LocalTime.of(raw / 100, raw % 100);
             return ZonedDateTime.of(date, time, zone).toEpochSecond();

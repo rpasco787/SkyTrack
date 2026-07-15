@@ -8,9 +8,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class BtsScheduleRepositoryTest {
 
-    private final BtsFlightRecord inbound  = new BtsFlightRecord("UA","1234","N12345","DEN","ORD", 1773080000L, 600L, false);
-    private final BtsFlightRecord outbound = new BtsFlightRecord("UA","5678","N12345","ORD","LAX", 1773090000L, 900L, false);
-    private final BtsFlightRecord otherTail= new BtsFlightRecord("AA","99","N999","ORD","MIA",     1773091000L, 0L,   false);
+    private final BtsFlightRecord inbound  = new BtsFlightRecord("UA","1234","N12345","DEN","ORD", 1773080000L, 1773083600L, 600L, false);
+    private final BtsFlightRecord outbound = new BtsFlightRecord("UA","5678","N12345","ORD","LAX", 1773090000L, 1773093600L, 900L, false);
+    private final BtsFlightRecord otherTail= new BtsFlightRecord("AA","99","N999","ORD","MIA",     1773091000L, 1773094600L, 0L,   false);
 
     private final BtsScheduleRepository repo =
             new BtsScheduleRepository(List.of(inbound, outbound, otherTail));
