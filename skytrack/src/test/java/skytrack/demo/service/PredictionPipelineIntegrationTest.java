@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import skytrack.demo.config.PredictionProperties;
+import skytrack.demo.controller.PredictionController;
 import skytrack.demo.model.PredictedDelayEvent;
 import skytrack.demo.model.ResolvedArrival;
 
@@ -21,7 +22,7 @@ import static org.mockito.Mockito.mock;
  */
 class PredictionPipelineIntegrationTest {
 
-    static final Path BTS_CSV = Path.of("data/bts/ontime-2026-03-09.csv");
+    static final Path BTS_CSV = Path.of("skytrack/data/bts/btsdata.csv");
 
     static RecentPredictionStore store;
     static DelayPredictionService service;
@@ -29,7 +30,7 @@ class PredictionPipelineIntegrationTest {
     @BeforeAll
     static void setUp() {
         Assumptions.assumeTrue(Files.exists(BTS_CSV),
-                "Skipping: data/bts/ontime-2026-03-09.csv not present");
+                "Skipping: skytrack/data/bts/btsdata.csv not present");
 
         var props = new PredictionProperties(true, BTS_CSV.toString(), 45, 15);
         var tzResolver = new AirportTimeZoneResolver();
@@ -55,16 +56,16 @@ class PredictionPipelineIntegrationTest {
 
     @Test
     void producesAtLeastOnePredictionWithBtsGroundTruth() {
-        // Use callsigns matching BTS OP_UNIQUE_CARRIER codes for 2026-03-09.
-        // The resolver silently returns empty when no tail rotation is found,
-        // so we try several major carriers to maximise hit rate.
+        // Real BTS 2026-03-09 tail rotations verified against data/bts/btsdata.csv.
+        // epoch = inbound flight's actual arrival (CRS_ARR_TIME + ARR_DELAY), UTC.
+        // Each produces a ≥15-min predicted delay with non-null BTS actual delay.
+        //   AAL2789 -> LAX: tail N412UW -> AA1835, predicted 44m, actual 64m
+        //   AAL2117 -> MCO: tail N573UW -> AA2117, predicted 44m, actual 57m
+        //   ASA368  -> MCO: tail N277AK -> AS397,  predicted 44m, actual 55m
         var candidateArrivals = List.of(
-                arrival("UAL1234", "ORD", 1773088200L),
-                arrival("AAL255",  "LAX", 1773088200L),
-                arrival("DAL400",  "ATL", 1773088200L),
-                arrival("SWA100",  "MDW", 1773088200L),
-                arrival("UAL100",  "SFO", 1773092000L),
-                arrival("AAL4",    "JFK", 1773092000L));
+                arrival("AAL2789", "LAX", 1773083940L),
+                arrival("AAL2117", "MCO", 1773074580L),
+                arrival("ASA368",  "MCO", 1773087360L));
 
         for (var a : candidateArrivals) {
             service.predictNextDeparture(a);
@@ -86,6 +87,16 @@ class PredictionPipelineIntegrationTest {
         assertThat(withActual)
                 .as("Expected at least one prediction to have BTS actualDelaySeconds")
                 .isGreaterThan(0);
+
+        // REST read-path: GET /predictions/{iata} must surface the stored predictions
+        var controller = new PredictionController(store, new PredictionAccuracyService());
+        var viaRest = candidateArrivals.stream()
+                .map(a -> controller.predictions(a.arrivalAirportIata()))
+                .flatMap(List::stream)
+                .toList();
+        assertThat(viaRest)
+                .as("GET /predictions/{iata} should return the stored predictions")
+                .isNotEmpty();
     }
 
     private static ResolvedArrival arrival(String callsign, String iata, long epochSeconds) {
