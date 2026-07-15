@@ -18,7 +18,7 @@ class DisruptionScoreServiceTest {
 
     @BeforeEach
     void setUp() {
-        var props = new DisruptionScoreProperties(60, 1, 15, 30, 0.85);
+        var props = new DisruptionScoreProperties(60, 1, 15, 30, 0.85, 0.15, 8);
         service = new DisruptionScoreService(props);
     }
 

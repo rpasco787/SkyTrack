@@ -105,7 +105,7 @@ class FlightPipelineIntegrationTest {
 
         // Delay pipeline
         var delayComputer = new DelayComputer();
-        var disruptionProps = new DisruptionScoreProperties(60, 1, 15, 30, 0.85);
+        var disruptionProps = new DisruptionScoreProperties(60, 1, 15, 30, 0.85, 0.15, 8);
         disruptionScoreService = new DisruptionScoreService(disruptionProps);
         mockEventProducer = mock(SqsAirportEventProducer.class);
         var cascadeDetector = new CascadeDetector(disruptionProps);

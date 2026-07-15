@@ -24,7 +24,7 @@ class DisruptionScoreServiceConcurrencyTest {
 
     @Test
     void recordDelayDoesNotLoseUpdatesUnderConcurrency() throws Exception {
-        var service = new DisruptionScoreService(new DisruptionScoreProperties(60, 1, 15, 30, 0.85));
+        var service = new DisruptionScoreService(new DisruptionScoreProperties(60, 1, 15, 30, 0.85, 0.15, 8));
         int threads = 8, perThread = 5_000;
         long arrival = 1_709_312_400L;               // all land in the same 1-min bucket
 

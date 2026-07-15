@@ -37,6 +37,8 @@ skytrack:
     delay-threshold-minutes: 15
     cascade-threshold-minutes: 30
     cascade-propagation-factor: 0.85
+    en-route-recovery-factor: 0.15
+    cascade-max-hops: 8
   prediction:
     enabled: false
     bts-csv-path: data/bts/ontime-2026-03-09.csv
