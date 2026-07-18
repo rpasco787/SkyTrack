@@ -19,7 +19,7 @@ public class DelayEventProcessor {
     private final DelayComputer delayComputer;
     private final DisruptionScoreService disruptionScoreService;
     private final SqsAirportEventProducer eventProducer;
-    private final CascadeDetector cascadeDetector;
+    private final CascadeChainDetector cascadeChainDetector;
     private final WeatherCache weatherCache;
     private final HistoricalDelayWriter historicalDelayWriter;
     private final ScheduleCoverageTracker coverageTracker;
@@ -29,7 +29,7 @@ public class DelayEventProcessor {
     public DelayEventProcessor(DelayComputer delayComputer,
                                DisruptionScoreService disruptionScoreService,
                                SqsAirportEventProducer eventProducer,
-                               CascadeDetector cascadeDetector,
+                               CascadeChainDetector cascadeChainDetector,
                                WeatherCache weatherCache,
                                HistoricalDelayWriter historicalDelayWriter,
                                ScheduleCoverageTracker coverageTracker,
@@ -38,7 +38,7 @@ public class DelayEventProcessor {
         this.delayComputer = delayComputer;
         this.disruptionScoreService = disruptionScoreService;
         this.eventProducer = eventProducer;
-        this.cascadeDetector = cascadeDetector;
+        this.cascadeChainDetector = cascadeChainDetector;
         this.weatherCache = weatherCache;
         this.historicalDelayWriter = historicalDelayWriter;
         this.coverageTracker = coverageTracker;
@@ -55,11 +55,11 @@ public class DelayEventProcessor {
         historicalDelayWriter.buffer(delayEvent);
         coverageTracker.record(delayEvent.resolutionMethod());
 
-        cascadeDetector.checkCascade(delayEvent).ifPresent(alert -> {
-            recentCascadeStore.add(alert);
-            log.info("Cascade risk: {} at {} predicted downstream delay={}min",
-                    alert.sourceCallsign(), alert.arrivalAirportIata(),
-                    alert.predictedDownstreamDelaySeconds() / 60);
+        cascadeChainDetector.detect(arrival).ifPresent(chain -> {
+            recentCascadeStore.add(chain);
+            log.info("Cascade risk: {} from {} -> {} downstream flights, total predicted delay={}min",
+                    chain.sourceCallsign(), chain.originAirportIata(),
+                    chain.flightsAffected(), chain.totalPredictedDelaySeconds() / 60);
         });
 
         delayPredictionService.predictNextDeparture(arrival);

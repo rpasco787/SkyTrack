@@ -44,19 +44,20 @@ flowchart LR
 
     subgraph "Fan-out"
         DS[DisruptionScoreService]
-        CD[CascadeDetector]
+        CCD[CascadeChainDetector<br/>multi-hop tail-rotation walk]
+        RCS[(RecentCascadeStore<br/>in-memory per-airport)]
         HW[HistoricalDelayWriter]
         S3[(S3 Parquet<br/>year/month/day/hour)]
         DEP --> DS
-        DEP --> CD
+        DEP --> CCD --> RCS
         DEP --> HW --> S3
     end
 
     subgraph Serving
-        API[REST controllers<br/>airports / flights / cascades<br/>analytics / schedule]
+        API[REST controllers<br/>airports / flights / cascades<br/>cascades/accuracy / schedule]
         UI[Dashboard]
         DS --> API
-        CD --> API
+        RCS --> API
         DB --> API
         S3 --> API
         API --> UI
@@ -88,9 +89,20 @@ flowchart LR
 4. **Processing fan-out** — `DelayEventProcessor` enriches each `DelayEvent` with weather
    (`WeatherCache`, METAR) and dispatches it to three independent consumers:
    `DisruptionScoreService` (in-memory sliding-window airport scores),
-   `CascadeDetector` (predicts downstream
-   delay propagation), and `HistoricalDelayWriter` (buffers and flushes Parquet to S3,
+   `CascadeChainDetector` (multi-hop tail-rotation chain: walks BTS schedule via
+   `findNextDeparture`, propagates delay in delay-space using slack absorption and
+   en-route recovery, stores results in `RecentCascadeStore`; config keys
+   `skytrack.disruption.en-route-recovery-factor` and `cascade-max-hops`),
+   and `HistoricalDelayWriter` (buffers and flushes Parquet to S3,
    partitioned `year/month/day/hour`).
+
+   **Cascade chain recurrence:**
+   `depDelay[n] = max(0, carriedArrivalDelay − scheduledSlack[n])`;
+   `arrivalDelay[n] = depDelay[n] × (1 − enRouteRecovery)`.
+   Chain terminates when a hop's predicted delay falls below the 15-minute threshold,
+   the tail rotation ends, a leg is cancelled, or `cascadeMaxHops` (default 8) is reached.
+   Two REST endpoints serve results: `GET /cascades/{iata}` (recent chains) and
+   `GET /cascades/{iata}/accuracy` (hop-level MAE + backtestable-hop counts against BTS actuals).
 
 5. **Serving** — six Spring REST controllers expose the live and historical results, consumed
    by the dashboard.

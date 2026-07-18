@@ -9,8 +9,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import skytrack.demo.model.*;
 import skytrack.demo.parquet.HistoricalDelayWriter;
 import skytrack.demo.sqs.SqsAirportEventProducer;
-import skytrack.demo.service.RecentCascadeStore;
-import skytrack.demo.service.ScheduleCoverageTracker;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -30,7 +28,7 @@ class DelayEventProcessorTest {
     @Mock private DelayComputer delayComputer;
     @Mock private DisruptionScoreService disruptionScoreService;
     @Mock private SqsAirportEventProducer eventProducer;
-    @Mock private CascadeDetector cascadeDetector;
+    @Mock private CascadeChainDetector cascadeChainDetector;
     @Mock private WeatherCache weatherCache;
     @Mock private HistoricalDelayWriter historicalDelayWriter;
     @Mock private ScheduleCoverageTracker coverageTracker;
@@ -43,7 +41,7 @@ class DelayEventProcessorTest {
     void setUp() {
         lenient().when(weatherCache.get(anyString())).thenReturn(Optional.empty());
         processor = new DelayEventProcessor(
-                delayComputer, disruptionScoreService, eventProducer, cascadeDetector,
+                delayComputer, disruptionScoreService, eventProducer, cascadeChainDetector,
                 weatherCache, historicalDelayWriter, coverageTracker, recentCascadeStore,
                 delayPredictionService);
     }
@@ -69,29 +67,29 @@ class DelayEventProcessorTest {
         var event = delayEvent(900);
 
         when(delayComputer.compute(eq(arrival), any())).thenReturn(event);
-        when(cascadeDetector.checkCascade(event)).thenReturn(Optional.empty());
+        when(cascadeChainDetector.detect(arrival)).thenReturn(Optional.empty());
 
         processor.process(arrival);
 
         verify(delayComputer).compute(eq(arrival), any());
         verify(disruptionScoreService).recordDelay(event);
         verify(eventProducer).send(event);
-        verify(cascadeDetector).checkCascade(event);
+        verify(cascadeChainDetector).detect(arrival);
     }
 
     @Test
-    void shouldHandleCascadeAlert() {
+    void shouldHandleCascadeChain() {
         var arrival = resolvedArrival(3600);
         var event = delayEvent(3600);
-        var alert = new CascadeAlert("UAL1234", "ORD", 3600, 3060, 0.85, Instant.now());
+        var chain = CascadeChain.of("UAL1234", "ORD", 3600L, List.of(), Instant.now());
 
         when(delayComputer.compute(eq(arrival), any())).thenReturn(event);
-        when(cascadeDetector.checkCascade(event)).thenReturn(Optional.of(alert));
+        when(cascadeChainDetector.detect(arrival)).thenReturn(Optional.of(chain));
 
         processor.process(arrival);
 
-        verify(cascadeDetector).checkCascade(event);
-        verify(recentCascadeStore).add(alert);
+        verify(cascadeChainDetector).detect(arrival);
+        verify(recentCascadeStore).add(chain);
     }
 
     @Test
@@ -104,7 +102,7 @@ class DelayEventProcessorTest {
                 null, null, null, null);
 
         when(delayComputer.compute(eq(arrival), any())).thenReturn(event);
-        when(cascadeDetector.checkCascade(event)).thenReturn(Optional.empty());
+        when(cascadeChainDetector.detect(arrival)).thenReturn(Optional.empty());
 
         processor.process(arrival);
 
@@ -124,9 +122,9 @@ class DelayEventProcessorTest {
                 2.0, 800, 18, 25, FlightCategory.IFR, "raw")));
 
         var p = new DelayEventProcessor(realComputer, disruptionScoreService,
-                eventProducer, cascadeDetector, realCache, historicalDelayWriter, coverageTracker, recentCascadeStore,
+                eventProducer, cascadeChainDetector, realCache, historicalDelayWriter, coverageTracker, recentCascadeStore,
                 delayPredictionService);
-        when(cascadeDetector.checkCascade(any())).thenReturn(Optional.empty());
+        when(cascadeChainDetector.detect(any())).thenReturn(Optional.empty());
 
         var arrival = new ResolvedArrival("abc123", "UAL1234", "UA", "1234",
                 "KORD", "ORD", 1709312400L, 1709311500L, 900L, "API_CACHE");
@@ -143,7 +141,7 @@ class DelayEventProcessorTest {
         var arrival = resolvedArrival(900);
         var event = delayEvent(900);
         when(delayComputer.compute(eq(arrival), any())).thenReturn(event);
-        when(cascadeDetector.checkCascade(event)).thenReturn(Optional.empty());
+        when(cascadeChainDetector.detect(arrival)).thenReturn(Optional.empty());
 
         processor.process(arrival);
 
@@ -155,7 +153,7 @@ class DelayEventProcessorTest {
         var arrival = resolvedArrival(900);
         var event = delayEvent(900);
         when(delayComputer.compute(eq(arrival), any())).thenReturn(event);
-        when(cascadeDetector.checkCascade(event)).thenReturn(Optional.empty());
+        when(cascadeChainDetector.detect(arrival)).thenReturn(Optional.empty());
 
         processor.process(arrival);
 
@@ -167,7 +165,7 @@ class DelayEventProcessorTest {
         var arrival = resolvedArrival(900);
         var event = delayEvent(900);
         when(delayComputer.compute(eq(arrival), any())).thenReturn(event);
-        when(cascadeDetector.checkCascade(event)).thenReturn(Optional.empty());
+        when(cascadeChainDetector.detect(arrival)).thenReturn(Optional.empty());
 
         processor.process(arrival);
 
@@ -182,9 +180,9 @@ class DelayEventProcessorTest {
         WeatherCache emptyCache = new WeatherCache(props, Clock.systemUTC());
 
         var p = new DelayEventProcessor(realComputer, disruptionScoreService,
-                eventProducer, cascadeDetector, emptyCache, historicalDelayWriter, coverageTracker, recentCascadeStore,
+                eventProducer, cascadeChainDetector, emptyCache, historicalDelayWriter, coverageTracker, recentCascadeStore,
                 delayPredictionService);
-        when(cascadeDetector.checkCascade(any())).thenReturn(Optional.empty());
+        when(cascadeChainDetector.detect(any())).thenReturn(Optional.empty());
 
         var arrival = new ResolvedArrival("abc123", "UAL1234", "UA", "1234",
                 "KORD", "ORD", 1709312400L, 1709311500L, 900L, "API_CACHE");

@@ -1,7 +1,7 @@
 package skytrack.demo.service;
 
 import org.springframework.stereotype.Service;
-import skytrack.demo.model.CascadeAlert;
+import skytrack.demo.model.CascadeChain;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -15,27 +15,27 @@ public class RecentCascadeStore {
 
     private static final int MAX_PER_AIRPORT = 50;
 
-    private final Map<String, Deque<CascadeAlert>> byAirport = new ConcurrentHashMap<>();
+    private final Map<String, Deque<CascadeChain>> byAirport = new ConcurrentHashMap<>();
 
-    public void add(CascadeAlert alert) {
-        if (alert == null || alert.arrivalAirportIata() == null) {
+    public void add(CascadeChain chain) {
+        if (chain == null || chain.originAirportIata() == null) {
             return;
         }
-        Deque<CascadeAlert> deque = byAirport.computeIfAbsent(
-                alert.arrivalAirportIata(), k -> new ArrayDeque<>());
+        Deque<CascadeChain> deque = byAirport.computeIfAbsent(
+                chain.originAirportIata(), k -> new ArrayDeque<>());
         synchronized (deque) {
-            deque.addFirst(alert);
+            deque.addFirst(chain);
             while (deque.size() > MAX_PER_AIRPORT) {
                 deque.removeLast();
             }
         }
     }
 
-    public List<CascadeAlert> getRecent(String airportIata) {
+    public List<CascadeChain> getRecent(String airportIata) {
         if (airportIata == null) {
             return List.of();
         }
-        Deque<CascadeAlert> deque = byAirport.get(airportIata);
+        Deque<CascadeChain> deque = byAirport.get(airportIata);
         if (deque == null) {
             return List.of();
         }

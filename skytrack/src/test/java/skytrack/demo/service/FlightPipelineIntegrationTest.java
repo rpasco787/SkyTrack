@@ -108,11 +108,14 @@ class FlightPipelineIntegrationTest {
         var disruptionProps = new DisruptionScoreProperties(60, 1, 15, 30, 0.85, 0.15, 8);
         disruptionScoreService = new DisruptionScoreService(disruptionProps);
         mockEventProducer = mock(SqsAirportEventProducer.class);
-        var cascadeDetector = new CascadeDetector(disruptionProps);
+        var cascadeChainDetector = new CascadeChainDetector(
+                new CallsignParser(), BtsScheduleRepository.empty(),
+                new TurnaroundEstimator(new skytrack.demo.config.PredictionProperties(false, "x", 45, 15)),
+                disruptionProps, java.time.Clock.systemUTC());
         var weatherCache = mock(WeatherCache.class);
         org.mockito.Mockito.when(weatherCache.get(any())).thenReturn(Optional.empty());
         var delayEventProcessor = new DelayEventProcessor(
-                delayComputer, disruptionScoreService, mockEventProducer, cascadeDetector, weatherCache,
+                delayComputer, disruptionScoreService, mockEventProducer, cascadeChainDetector, weatherCache,
                 mock(skytrack.demo.parquet.HistoricalDelayWriter.class),
                 mock(ScheduleCoverageTracker.class),
                 mock(RecentCascadeStore.class),
