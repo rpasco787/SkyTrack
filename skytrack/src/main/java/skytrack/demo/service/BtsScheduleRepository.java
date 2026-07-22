@@ -43,6 +43,50 @@ public class BtsScheduleRepository {
                 .min(Comparator.comparingLong(BtsFlightRecord::scheduledDepEpoch));
     }
 
+    public Map<String, Long> medianTurnaroundSecondsByCarrier() {
+        Map<String, List<Long>> gapsByCarrier = new HashMap<>();
+        for (List<BtsFlightRecord> legs : byTail.values()) {
+            List<BtsFlightRecord> sorted = legs.stream()
+                    .filter(r -> r.scheduledArrEpoch() != null)
+                    .sorted(Comparator.comparingLong(BtsFlightRecord::scheduledDepEpoch))
+                    .toList();
+            for (int i = 1; i < sorted.size(); i++) {
+                BtsFlightRecord prev = sorted.get(i - 1);
+                BtsFlightRecord curr = sorted.get(i);
+                if (!prev.dest().equals(curr.origin())) continue;
+                long gap = curr.scheduledDepEpoch() - prev.scheduledArrEpoch();
+                if (gap < 300 || gap > 14_400) continue;
+                gapsByCarrier.computeIfAbsent(curr.carrierIata(), k -> new ArrayList<>()).add(gap);
+            }
+        }
+        Map<String, Long> result = new HashMap<>();
+        gapsByCarrier.forEach((carrier, gaps) -> {
+            List<Long> sortedGaps = gaps.stream().sorted().toList();
+            result.put(carrier, sortedGaps.get(sortedGaps.size() / 2));
+        });
+        return result;
+    }
+
+    public Map<String, Double> medianRecoveryFactorByRoute() {
+        Map<String, List<Double>> factorsByRoute = new HashMap<>();
+        for (BtsFlightRecord r : all) {
+            if (r.lateAircraftDelaySeconds() == null || r.lateAircraftDelaySeconds() <= 0) continue;
+            if (r.actualDepDelaySeconds() == null || r.actualDepDelaySeconds() <= 0) continue;
+            if (r.arrDelaySeconds() == null) continue;
+            double recovery = (double)(r.actualDepDelaySeconds() - r.arrDelaySeconds())
+                              / r.actualDepDelaySeconds();
+            recovery = Math.max(0.0, recovery);
+            factorsByRoute.computeIfAbsent(r.origin() + "-" + r.dest(), k -> new ArrayList<>())
+                          .add(recovery);
+        }
+        Map<String, Double> result = new HashMap<>();
+        factorsByRoute.forEach((route, factors) -> {
+            List<Double> sorted = factors.stream().sorted().toList();
+            result.put(route, sorted.get(sorted.size() / 2));
+        });
+        return result;
+    }
+
     public int size() { return all.size(); }
 
     public static BtsScheduleRepository empty() {

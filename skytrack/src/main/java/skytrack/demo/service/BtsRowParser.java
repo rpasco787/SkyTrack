@@ -43,6 +43,9 @@ public class BtsRowParser {
             arrEpoch += 24 * 3600;
         }
 
+        Long arrDelaySeconds = cancelled ? null : minutesToSeconds(at(row, idx, "ARR_DELAY"));
+        Long lateAircraftDelaySeconds = cancelled ? null : minutesToSeconds(at(row, idx, "LATE_AIRCRAFT_DELAY"));
+
         return Optional.of(new BtsFlightRecord(
                 at(row, idx, "OP_UNIQUE_CARRIER"),
                 at(row, idx, "OP_CARRIER_FL_NUM"),
@@ -52,7 +55,9 @@ public class BtsRowParser {
                 epoch,
                 arrEpoch,
                 delaySeconds,
-                cancelled));
+                cancelled,
+                arrDelaySeconds,
+                lateAircraftDelaySeconds));
     }
 
     private static String at(String[] row, Map<String, Integer> idx, String col) {

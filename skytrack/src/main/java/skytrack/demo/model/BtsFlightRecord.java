@@ -9,4 +9,6 @@ public record BtsFlightRecord(
         long scheduledDepEpoch,
         Long scheduledArrEpoch,
         Long actualDepDelaySeconds,
-        boolean cancelled) {}
+        boolean cancelled,
+        Long arrDelaySeconds,
+        Long lateAircraftDelaySeconds) {}

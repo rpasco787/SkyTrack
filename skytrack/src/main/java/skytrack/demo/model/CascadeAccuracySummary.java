@@ -6,4 +6,7 @@ public record CascadeAccuracySummary(
         int totalHops,
         int backtestableHops,
         double hopLevelMaeSeconds,
-        double avgChainLength) {}
+        double avgChainLength,
+        int truePositives,
+        int falsePositives,
+        double precision) {}

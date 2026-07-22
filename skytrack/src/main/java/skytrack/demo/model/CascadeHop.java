@@ -14,4 +14,5 @@ public record CascadeHop(
         String destIata,
         long scheduledDepEpoch,
         long predictedDepDelaySeconds,
-        Long actualDepDelaySeconds) {}
+        Long actualDepDelaySeconds,
+        Long lateAircraftDelaySeconds) {}

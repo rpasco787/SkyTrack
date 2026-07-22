@@ -38,7 +38,7 @@ class CascadeControllerTest {
 
     @Test
     void shouldReturnRecentCascades() throws Exception {
-        var hop = new CascadeHop("UA", "200", "N1", "ORD", "DEN", 1000L, 3600L, 1800L);
+        var hop = new CascadeHop("UA", "200", "N1", "ORD", "DEN", 1000L, 3600L, 1800L, null);
         var chain = CascadeChain.of("UAL1", "ORD", 2400L, List.of(hop), Instant.now());
         when(recentCascadeStore.getRecent("ORD")).thenReturn(List.of(chain));
 
@@ -53,7 +53,7 @@ class CascadeControllerTest {
 
     @Test
     void shouldReturnAccuracySummary() throws Exception {
-        var summary = new CascadeAccuracySummary("ORD", 3, 7, 5, 1200.0, 2.33);
+        var summary = new CascadeAccuracySummary("ORD", 3, 7, 5, 1200.0, 2.33, 0, 0, 0.0);
         when(recentCascadeStore.getRecent("ORD")).thenReturn(List.of());
         when(cascadeAccuracyService.summarize("ORD", List.of())).thenReturn(summary);
 

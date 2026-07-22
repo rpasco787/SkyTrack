@@ -26,6 +26,7 @@ import software.amazon.awssdk.services.dynamodb.model.*;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -110,8 +111,8 @@ class FlightPipelineIntegrationTest {
         mockEventProducer = mock(SqsAirportEventProducer.class);
         var cascadeChainDetector = new CascadeChainDetector(
                 new CallsignParser(), BtsScheduleRepository.empty(),
-                new TurnaroundEstimator(new skytrack.demo.config.PredictionProperties(false, "x", 45, 15)),
-                disruptionProps, java.time.Clock.systemUTC());
+                new TurnaroundEstimator(new skytrack.demo.config.PredictionProperties(false, "x", 45, 15), Map.of()),
+                disruptionProps, java.time.Clock.systemUTC(), Map.of());
         var weatherCache = mock(WeatherCache.class);
         org.mockito.Mockito.when(weatherCache.get(any())).thenReturn(Optional.empty());
         var delayEventProcessor = new DelayEventProcessor(

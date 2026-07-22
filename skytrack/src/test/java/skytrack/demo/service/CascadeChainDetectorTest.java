@@ -10,6 +10,7 @@ import skytrack.demo.model.ResolvedArrival;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,11 +28,11 @@ class CascadeChainDetectorTest {
     // Inbound UA100 lands ORD; tail N1 then flies ORD->DEN (UA200), DEN->SFO (UA300).
     private BtsScheduleRepository repo(long baseDep) {
         var inbound = new BtsFlightRecord("UA", "100", "N1", "IAH", "ORD",
-                baseDep, baseDep + H, null, false);                 // sched arr ORD = baseDep+1h
+                baseDep, baseDep + H, null, false, null, null);                 // sched arr ORD = baseDep+1h
         var leg1 = new BtsFlightRecord("UA", "200", "N1", "ORD", "DEN",
-                baseDep + 2 * H, baseDep + 4 * H, 1500L, false);   // dep +2h, arr +4h
+                baseDep + 2 * H, baseDep + 4 * H, 1500L, false, null, null);   // dep +2h, arr +4h
         var leg2 = new BtsFlightRecord("UA", "300", "N1", "DEN", "SFO",
-                baseDep + 5 * H, baseDep + 7 * H, 600L, false);    // dep +5h, arr +7h
+                baseDep + 5 * H, baseDep + 7 * H, 600L, false, null, null);    // dep +5h, arr +7h
         return TestRepos.of(inbound, leg1, leg2);
     }
 
@@ -43,8 +44,24 @@ class CascadeChainDetectorTest {
 
     private CascadeChainDetector detector(BtsScheduleRepository r, double recovery, int maxHops) {
         return new CascadeChainDetector(new CallsignParser(), r,
-                new TurnaroundEstimator(new PredictionProperties(true, "x", 45, 15)),
-                props(recovery, maxHops), clock);
+                new TurnaroundEstimator(new PredictionProperties(true, "x", 45, 15), Map.of()),
+                props(recovery, maxHops), clock, Map.of());
+    }
+
+    private CascadeChainDetector detectorWithTurnarounds(BtsScheduleRepository r,
+                                                          double recovery, int maxHops,
+                                                          Map<String, Long> turnarounds) {
+        return new CascadeChainDetector(new CallsignParser(), r,
+                new TurnaroundEstimator(new PredictionProperties(true, "x", 45, 15), turnarounds),
+                props(recovery, maxHops), clock, Map.of());
+    }
+
+    private CascadeChainDetector detectorWithRecovery(BtsScheduleRepository r,
+                                                       Map<String, Double> routeRecovery,
+                                                       int maxHops) {
+        return new CascadeChainDetector(new CallsignParser(), r,
+                new TurnaroundEstimator(new PredictionProperties(true, "x", 45, 15), Map.of()),
+                props(0.15, maxHops), clock, routeRecovery);
     }
 
     @Test
@@ -108,11 +125,41 @@ class CascadeChainDetectorTest {
     }
 
     @Test
+    void usesCarrierSpecificTurnaroundWhenAvailable() {
+        long base = 100_000L;
+        // UA carrier turnaround = 3600s (1h). Default is 45m = 2700s.
+        // inbound sched arr = base+1h. leg1 sched dep = base+2h.
+        // slack with 3600s turnaround = (base+2h) - (base+1h) - 3600 = 3600 - 3600 = 0
+        // depDelay1 = max(0, 7200 - 0) = 7200s  (vs 6300s with 2700s turnaround)
+        var det = detectorWithTurnarounds(repo(base), 0.15, 8, Map.of("UA", 3600L));
+        var result = det.detect(arrival(base + H + 7200L, 7200L));
+
+        assertThat(result).isPresent();
+        assertThat(result.get().hops().get(0).predictedDepDelaySeconds()).isEqualTo(7200L);
+    }
+
+    @Test
     void emptyWhenCallsignUnparseable() {
         long base = 100_000L;
         var det = detector(repo(base), 0.0, 8);
         var bad = new ResolvedArrival("abc", "???", "UA", "100", "KORD", "ORD",
                 base + H + 7200, base, 7200L, "BTS_REPLAY");
         assertThat(det.detect(bad)).isEmpty();
+    }
+
+    @Test
+    void usesPerRouteRecoveryFactorWhenAvailable() {
+        long base = 100_000L;
+        // ORD→DEN route recovery = 0.40 (high; crew makes up time on this route)
+        // inbound arrDelay=7200s, slack to leg1=900s
+        // depDelay1 = 7200-900 = 6300s
+        // carried = round(6300 * (1 - 0.40)) = round(3780) = 3780
+        // DEN→SFO slack=900s; depDelay2 = max(0, 3780-900) = 2880s  (≥ 900s threshold ✓)
+        var det = detectorWithRecovery(repo(base), Map.of("ORD-DEN", 0.40), 8);
+        var result = det.detect(arrival(base + H + 7200L, 7200L));
+
+        assertThat(result).isPresent();
+        assertThat(result.get().hops()).hasSize(2);
+        assertThat(result.get().hops().get(1).predictedDepDelaySeconds()).isEqualTo(2880L);
     }
 }

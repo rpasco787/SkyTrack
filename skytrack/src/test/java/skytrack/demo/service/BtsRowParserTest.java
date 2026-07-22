@@ -57,6 +57,29 @@ class BtsRowParserTest {
     }
 
     @Test
+    void parsesArrDelayAndLateAircraftDelay() {
+        var fields = new java.util.LinkedHashMap<String, String>();
+        fields.put("FL_DATE",             "2026-03-09");
+        fields.put("OP_UNIQUE_CARRIER",   "UA");
+        fields.put("OP_CARRIER_FL_NUM",   "200");
+        fields.put("TAIL_NUM",            "N12345");
+        fields.put("ORIGIN",              "ORD");
+        fields.put("DEST",                "DEN");
+        fields.put("CRS_DEP_TIME",        "1430");
+        fields.put("DEP_DELAY",           "30.00");
+        fields.put("CRS_ARR_TIME",        "1650");
+        fields.put("CANCELLED",           "0.00");
+        fields.put("ARR_DELAY",           "18.00");
+        fields.put("LATE_AIRCRAFT_DELAY", "25.00");
+
+        var rec = parseRow(fields);
+
+        assertThat(rec).isPresent();
+        assertThat(rec.get().arrDelaySeconds()).isEqualTo(18L * 60);
+        assertThat(rec.get().lateAircraftDelaySeconds()).isEqualTo(25L * 60);
+    }
+
+    @Test
     void parsesScheduledArrivalEpoch() {
         var record = parseRow(Map.of(
                 "FL_DATE", "3/9/2026 12:00:00 AM",

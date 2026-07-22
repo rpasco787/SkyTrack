@@ -13,6 +13,7 @@ import skytrack.demo.model.ResolvedArrival;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -36,17 +37,20 @@ public class CascadeChainDetector {
     private final TurnaroundEstimator turnaroundEstimator;
     private final DisruptionScoreProperties props;
     private final Clock clock;
+    private final Map<String, Double> routeRecoveryFactors;
 
     public CascadeChainDetector(CallsignParser callsignParser,
                                 BtsScheduleRepository repo,
                                 TurnaroundEstimator turnaroundEstimator,
                                 DisruptionScoreProperties props,
-                                Clock clock) {
+                                Clock clock,
+                                Map<String, Double> routeRecoveryFactors) {
         this.callsignParser = callsignParser;
         this.repo = repo;
         this.turnaroundEstimator = turnaroundEstimator;
         this.props = props;
         this.clock = clock;
+        this.routeRecoveryFactors = routeRecoveryFactors;
     }
 
     public Optional<CascadeChain> detect(ResolvedArrival arrival) {
@@ -66,9 +70,7 @@ public class CascadeChainDetector {
         String tail = in.tailNumber();
         if (tail == null || tail.isBlank() || in.scheduledArrEpoch() == null) return Optional.empty();
 
-        long minTurnaround = turnaroundEstimator.minTurnaroundSeconds(null);
         long thresholdSeconds = props.delayThresholdMinutes() * 60L;
-        double recovery = props.enRouteRecoveryFactor();
 
         List<CascadeHop> hops = new ArrayList<>();
         long carried = arrivalDelay;
@@ -82,6 +84,7 @@ public class CascadeChainDetector {
             BtsFlightRecord next = nextOpt.get();
             if (next.cancelled() || next.scheduledArrEpoch() == null) break;
 
+            long minTurnaround = turnaroundEstimator.minTurnaroundSeconds(next.carrierIata());
             long slack = next.scheduledDepEpoch() - prevSchedArr - minTurnaround;
             long depDelay = Math.max(0, carried - slack);
             if (depDelay < thresholdSeconds) break;
@@ -89,8 +92,10 @@ public class CascadeChainDetector {
             hops.add(new CascadeHop(
                     next.carrierIata(), next.flightNumber(), tail,
                     next.origin(), next.dest(), next.scheduledDepEpoch(),
-                    depDelay, next.actualDepDelaySeconds()));
+                    depDelay, next.actualDepDelaySeconds(), next.lateAircraftDelaySeconds()));
 
+            String routeKey = next.origin() + "-" + next.dest();
+            double recovery = routeRecoveryFactors.getOrDefault(routeKey, props.enRouteRecoveryFactor());
             carried = Math.round(depDelay * (1 - recovery));
             prevSchedArr = next.scheduledArrEpoch();
             from = next.dest();

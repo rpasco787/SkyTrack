@@ -17,6 +17,7 @@ import skytrack.demo.sqs.SqsAirportEventProducer;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,7 +43,7 @@ class DelayPredictionServiceTest {
     private static final long SCHED_DEP_BELOW = LANDING + 2700 - 600;
 
     private final PredictionProperties props = new PredictionProperties(true, "x", 45, 15);
-    private final TurnaroundEstimator turnaround = new TurnaroundEstimator(props);
+    private final TurnaroundEstimator turnaround = new TurnaroundEstimator(props, Map.of());
     private final DelayPredictor predictor = new DelayPredictor();
 
     private DelayPredictionService service;

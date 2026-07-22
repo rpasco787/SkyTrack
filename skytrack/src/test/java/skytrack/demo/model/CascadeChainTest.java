@@ -9,8 +9,8 @@ class CascadeChainTest {
 
     @Test
     void summarizesHopCountAndTotalPredictedDelay() {
-        var h1 = new CascadeHop("UA", "200", "N1", "ORD", "DEN", 1000L, 1800L, 1500L);
-        var h2 = new CascadeHop("UA", "300", "N1", "DEN", "SFO", 2000L, 900L, null);
+        var h1 = new CascadeHop("UA", "200", "N1", "ORD", "DEN", 1000L, 1800L, 1500L, null);
+        var h2 = new CascadeHop("UA", "300", "N1", "DEN", "SFO", 2000L, 900L, null, null);
         var chain = CascadeChain.of("UAL100", "ORD", 3600L, List.of(h1, h2), Instant.EPOCH);
 
         assertThat(chain.flightsAffected()).isEqualTo(2);

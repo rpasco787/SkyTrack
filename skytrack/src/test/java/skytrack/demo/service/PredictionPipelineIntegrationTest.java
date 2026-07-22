@@ -11,6 +11,7 @@ import skytrack.demo.model.ResolvedArrival;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -41,7 +42,7 @@ class PredictionPipelineIntegrationTest {
 
         var callsignParser = new CallsignParser();
         var resolver = new OutboundScheduleResolver(callsignParser, repo);
-        var turnaround = new TurnaroundEstimator(props);
+        var turnaround = new TurnaroundEstimator(props, Map.of());
         var predictor = new DelayPredictor();
 
         store = new RecentPredictionStore();
