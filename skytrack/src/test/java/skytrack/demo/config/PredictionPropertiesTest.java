@@ -20,6 +20,18 @@ class PredictionPropertiesTest {
         var props = new PredictionProperties(false, null, 0, 0);
         assertThat(props.btsCsvPath()).isEqualTo("data/bts/ontime-2026-03-09.csv");
         assertThat(props.minTurnaroundMinutes()).isEqualTo(45);
-        assertThat(props.delayThresholdMinutes()).isEqualTo(15);
+        assertThat(props.delayThresholdMinutes()).isEqualTo(0);
+    }
+
+    @Test
+    void zeroDelayThresholdIsHonouredForBacktesting() {
+        var props = new PredictionProperties(true, "x.csv", 45, 0);
+        assertThat(props.delayThresholdMinutes()).isZero();
+    }
+
+    @Test
+    void negativeDelayThresholdStillDefaultsTo15() {
+        assertThat(new PredictionProperties(true, "x.csv", 45, -1).delayThresholdMinutes())
+                .isEqualTo(15);
     }
 }

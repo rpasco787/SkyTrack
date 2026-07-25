@@ -115,4 +115,18 @@ class DelayPredictionServiceTest {
 
         verifyNoInteractions(store, eventProducer, historicalPredictionWriter);
     }
+
+    @Test
+    void zeroThresholdStoresSubThresholdPrediction() {
+        var zeroThresholdProps = new PredictionProperties(true, "x", 45, 0);
+        var zeroThresholdService = new DelayPredictionService(
+                resolver, turnaround, predictor, zeroThresholdProps,
+                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK);
+        var outbound = new OutboundFlight("UA", "5678", "N12345", "ORD", SCHED_DEP_BELOW, 300L);
+        when(resolver.resolve(any())).thenReturn(Optional.of(outbound));
+
+        zeroThresholdService.predictNextDeparture(arrival());
+
+        verify(store).add(any(PredictedDelayEvent.class));
+    }
 }
