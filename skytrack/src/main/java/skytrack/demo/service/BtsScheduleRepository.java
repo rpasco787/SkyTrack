@@ -94,6 +94,8 @@ public class BtsScheduleRepository {
 
     public int size() { return all.size(); }
 
+    public List<BtsFlightRecord> all() { return all; }
+
     public static BtsScheduleRepository empty() {
         return new BtsScheduleRepository(List.of());
     }

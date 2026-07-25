@@ -35,6 +35,7 @@ docs/*
 !docs/adr/
 !docs/2026-06-16-synthetic-schedule-demo-results.md
 !docs/2026-06-06-chunk7-pipeline-smoke-test-results.md
+!docs/backtest-results-*.md
 
 skytrack-learning-roadmap.md
 .gitignore

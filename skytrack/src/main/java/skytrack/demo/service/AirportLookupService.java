@@ -30,7 +30,7 @@ public class AirportLookupService {
     }
 
     @PostConstruct
-    void loadAirports() throws IOException {
+    public void loadAirports() throws IOException {
         List<Airport> loaded = new ArrayList<>();
         try (BufferedReader reader = Files.newBufferedReader(csvPath)) {
             reader.readLine(); // skip header
