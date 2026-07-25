@@ -2,6 +2,8 @@ package skytrack.demo.service;
 
 import org.junit.jupiter.api.Test;
 import skytrack.demo.model.BtsFlightRecord;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -61,5 +63,48 @@ class BtsScheduleRepositoryTest {
 
         assertThat(turnarounds).containsKey("UA");
         assertThat(turnarounds.get("UA")).isEqualTo(6400L);
+    }
+
+    @Test
+    void findInboundLegStillPicksNearestScheduledDeparture() {
+        // Same carrier+flight+dest on two different days; nearest wins.
+        var repo = TestRepos.of(
+                rec("UA", "100", "N1", "IAH", "ORD", 1000L, 5000L),
+                rec("UA", "100", "N1", "IAH", "ORD", 900_000L, 905_000L));
+        assertThat(repo.findInboundLeg("UA", "100", "ORD", 5200L))
+                .get().extracting(BtsFlightRecord::scheduledDepEpoch).isEqualTo(1000L);
+    }
+
+    @Test
+    void fromCsvAppliesEpochWindowFilter() throws Exception {
+        Path csv = writeTempCsv();  // two rows: one 2026-03-09, one 2026-03-20
+        var all = BtsScheduleRepository.fromCsv(csv.toString(), tz());
+        var filtered = BtsScheduleRepository.fromCsv(
+                csv.toString(), tz(), 1773014400L, 1773187200L);  // 2026-03-09 UTC day
+        assertThat(all.size()).isEqualTo(2);
+        assertThat(filtered.size()).isEqualTo(1);
+    }
+
+    private static BtsFlightRecord rec(String carrierIata, String flightNumber, String tailNumber,
+                                        String origin, String dest,
+                                        long scheduledDepEpoch, long scheduledArrEpoch) {
+        return new BtsFlightRecord(carrierIata, flightNumber, tailNumber, origin, dest,
+                scheduledDepEpoch, scheduledArrEpoch, null, false, null, null);
+    }
+
+    private static AirportTimeZoneResolver tz() {
+        return new AirportTimeZoneResolver();
+    }
+
+    private Path writeTempCsv() throws Exception {
+        Path csv = Files.createTempFile("bts-window-test", ".csv");
+        List<String> lines = List.of(
+                "FL_DATE,OP_UNIQUE_CARRIER,OP_CARRIER_FL_NUM,TAIL_NUM,ORIGIN,DEST,"
+                        + "CRS_DEP_TIME,CRS_ARR_TIME,CANCELLED,DEP_DELAY,ARR_DELAY,LATE_AIRCRAFT_DELAY",
+                "2026-03-09,UA,100,N1,ORD,ORD,1200,1300,0,0,0,0",
+                "2026-03-20,UA,200,N2,ORD,ORD,1200,1300,0,0,0,0");
+        Files.write(csv, lines);
+        csv.toFile().deleteOnExit();
+        return csv;
     }
 }

@@ -18,6 +18,7 @@ public class BtsScheduleRepository {
 
     private final List<BtsFlightRecord> all;
     private final Map<String, List<BtsFlightRecord>> byTail;
+    private final Map<String, List<BtsFlightRecord>> byInbound;
 
     // Package-private: used by tests and by the CSV-loading @Component constructor (Task 4).
     BtsScheduleRepository(List<BtsFlightRecord> records) {
@@ -25,14 +26,18 @@ public class BtsScheduleRepository {
         this.byTail = all.stream()
                 .filter(r -> r.tailNumber() != null && !r.tailNumber().isBlank())
                 .collect(Collectors.groupingBy(BtsFlightRecord::tailNumber));
+        this.byInbound = all.stream()
+                .collect(Collectors.groupingBy(BtsScheduleRepository::inboundKey));
+    }
+
+    private static String inboundKey(BtsFlightRecord r) {
+        return r.carrierIata() + "|" + r.flightNumber() + "|" + r.dest();
     }
 
     public Optional<BtsFlightRecord> findInboundLeg(String carrierIata, String flightNumber,
                                                     String destIata, long nearArrivalEpoch) {
-        return all.stream()
-                .filter(r -> r.carrierIata().equals(carrierIata)
-                        && r.flightNumber().equals(flightNumber)
-                        && r.dest().equals(destIata))
+        return byInbound.getOrDefault(carrierIata + "|" + flightNumber + "|" + destIata, List.of())
+                .stream()
                 .min(Comparator.comparingLong(r -> Math.abs(r.scheduledDepEpoch() - nearArrivalEpoch)));
     }
 
@@ -113,6 +118,11 @@ public class BtsScheduleRepository {
     }
 
     public static BtsScheduleRepository fromCsv(String path, AirportTimeZoneResolver tz) {
+        return fromCsv(path, tz, Long.MIN_VALUE, Long.MAX_VALUE);
+    }
+
+    public static BtsScheduleRepository fromCsv(String path, AirportTimeZoneResolver tz,
+                                                 long fromEpochInclusive, long toEpochExclusive) {
         var parser = new BtsRowParser(tz::zoneFor);
         var records = new ArrayList<BtsFlightRecord>();
         try (var reader = new BufferedReader(new FileReader(path, StandardCharsets.UTF_8))) {
@@ -125,7 +135,10 @@ public class BtsScheduleRepository {
             }
             String line;
             while ((line = reader.readLine()) != null) {
-                parser.parse(splitCsvLine(line), idx).ifPresent(records::add);
+                parser.parse(splitCsvLine(line), idx)
+                        .filter(r -> r.scheduledDepEpoch() >= fromEpochInclusive
+                                && r.scheduledDepEpoch() < toEpochExclusive)
+                        .ifPresent(records::add);
             }
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load BTS CSV: " + path, e);
