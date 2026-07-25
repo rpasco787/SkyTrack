@@ -50,7 +50,7 @@ public class DelayPredictionService {
             if (outbound.isEmpty()) return;
             var out = outbound.get();
 
-            long min = turnaroundEstimator.minTurnaroundSeconds(null);
+            long min = turnaroundEstimator.minTurnaroundSeconds(out.carrierIata());
             long predicted = delayPredictor.predictDelaySeconds(
                     arrival.actualArrivalTime(), out.scheduledDepEpoch(), min);
 

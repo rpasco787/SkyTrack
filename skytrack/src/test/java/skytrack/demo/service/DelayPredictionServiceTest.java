@@ -117,6 +117,26 @@ class DelayPredictionServiceTest {
     }
 
     @Test
+    void usesCarrierSpecificTurnaroundWhenAvailable() {
+        // AA median turnaround = 3600s (60 min), config default = 45 min (2700s).
+        var carrierTurnaround = new TurnaroundEstimator(props, Map.of("AA", 3600L));
+        var carrierService = new DelayPredictionService(
+                resolver, carrierTurnaround, predictor, props,
+                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK);
+        // outbound scheduled 1000s after landing: default turnaround -> predicted 1700s,
+        // AA-specific turnaround -> predicted 2600s. Either way it clears the 900s threshold.
+        var outbound = new OutboundFlight("AA", "5678", "N12345", "ORD", LANDING + 1000, null);
+        when(resolver.resolve(any())).thenReturn(Optional.of(outbound));
+
+        carrierService.predictNextDeparture(arrival());
+
+        ArgumentCaptor<PredictedDelayEvent> captor = ArgumentCaptor.forClass(PredictedDelayEvent.class);
+        verify(store).add(captor.capture());
+        assertThat(captor.getValue().minTurnaroundSeconds()).isEqualTo(3600L);
+        assertThat(captor.getValue().predictedDelaySeconds()).isEqualTo(2600L);
+    }
+
+    @Test
     void zeroThresholdStoresSubThresholdPrediction() {
         var zeroThresholdProps = new PredictionProperties(true, "x", 45, 0);
         var zeroThresholdService = new DelayPredictionService(
