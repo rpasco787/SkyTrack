@@ -100,7 +100,7 @@ public class BtsScheduleRepository {
         return new BtsScheduleRepository(List.of());
     }
 
-    static String[] splitCsvLine(String line) {
+    public static String[] splitCsvLine(String line) {
         List<String> fields = new ArrayList<>();
         StringBuilder sb = new StringBuilder();
         boolean inQuote = false;

@@ -20,6 +20,7 @@ import skytrack.demo.service.AirportLookupService;
 import skytrack.demo.service.AirportTimeZoneResolver;
 import skytrack.demo.service.BtsScheduleRepository;
 import skytrack.demo.service.CallsignParser;
+import skytrack.demo.service.BtsRowParser;
 import skytrack.demo.service.CascadeAccuracyService;
 import skytrack.demo.service.CascadeChainDetector;
 import skytrack.demo.service.DelayPredictionService;
@@ -40,6 +41,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -243,6 +245,92 @@ class AccuracyBacktestIT {
         assertThat(modelError.maeSeconds()).isLessThan(zeroError.maeSeconds());
         assertThat(modelError.maeSeconds()).isLessThan(flatError.maeSeconds());
         assertThat(cascadeAccuracySummary.precision()).isGreaterThan(0.5);
+    }
+
+    /**
+     * Tooling: writes a small, committable BTS fixture (header + rows for tails that actually
+     * appear in the resolved landings) plus a JSONL dump of the resolved arrivals, so
+     * {@code GoldenAccuracyTest} can run the model arm without the 370-file replay or the 196MB
+     * BTS CSV. Gated — run with:
+     *   cd skytrack && mvn test -Dtest=AccuracyBacktestIT -Dskytrack.tooling=true
+     */
+    @Test
+    void generateGoldenFixture() throws Exception {
+        assumeTrue(Boolean.getBoolean("skytrack.tooling"),
+                "Tooling test — run with -Dskytrack.tooling=true");
+        assumeTrue(Files.exists(Path.of("skytrack/data/bts/btsdata.csv")));
+        assumeTrue(Files.exists(Path.of("skytrack/data/recorded-opensky/")));
+
+        List<LandingEvent> landings = replayLandings("./skytrack/data/recorded-opensky/");
+
+        var tzResolver = new AirportTimeZoneResolver();
+        var repo = BtsScheduleRepository.fromCsv(
+                "skytrack/data/bts/btsdata.csv", tzResolver, REPLAY_DAY_START, REPLAY_DAY_END);
+        var callsignParser = new CallsignParser();
+        var arrivalResolver = new BtsArrivalResolver(callsignParser, repo);
+
+        List<ResolvedArrival> resolvedArrivals = new ArrayList<>();
+        Set<String> tailNumbers = new HashSet<>();
+        for (LandingEvent landing : landings) {
+            arrivalResolver.resolve(landing).ifPresent(arrival -> {
+                resolvedArrivals.add(arrival);
+                callsignParser.parse(arrival.callsign())
+                        .flatMap(p -> repo.findInboundLeg(p.iataCarrierCode(), p.flightNumber(),
+                                arrival.arrivalAirportIata(), arrival.actualArrivalTime()))
+                        .map(BtsFlightRecord::tailNumber)
+                        .ifPresent(tailNumbers::add);
+            });
+        }
+
+        Path fixtureCsv = Path.of("skytrack/src/test/resources/backtest/bts-fixture-2026-03-09.csv");
+        Files.createDirectories(fixtureCsv.getParent());
+        int written = writeFixtureCsv(
+                Path.of("skytrack/data/bts/btsdata.csv"), fixtureCsv, tzResolver, tailNumbers);
+
+        Path fixtureArrivals =
+                Path.of("skytrack/src/test/resources/backtest/resolved-arrivals-2026-03-09.jsonl");
+        var mapper = new ObjectMapper();
+        try (var writer = Files.newBufferedWriter(fixtureArrivals)) {
+            for (ResolvedArrival arrival : resolvedArrivals) {
+                writer.write(mapper.writeValueAsString(arrival));
+                writer.newLine();
+            }
+        }
+
+        System.out.printf("Wrote %d BTS rows (%d distinct tails) and %d resolved arrivals%n",
+                written, tailNumbers.size(), resolvedArrivals.size());
+    }
+
+    private static int writeFixtureCsv(Path source, Path dest, AirportTimeZoneResolver tzResolver,
+                                        Set<String> tailNumbers) throws IOException {
+        var parser = new BtsRowParser(tzResolver::zoneFor);
+        int written = 0;
+        try (var reader = Files.newBufferedReader(source);
+             var writer = Files.newBufferedWriter(dest)) {
+            String header = reader.readLine();
+            writer.write(header);
+            writer.newLine();
+            String[] cols = BtsScheduleRepository.splitCsvLine(header);
+            Map<String, Integer> idx = new HashMap<>();
+            for (int i = 0; i < cols.length; i++) {
+                idx.put(cols[i].replace("\"", "").trim(), i);
+            }
+
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] fields = BtsScheduleRepository.splitCsvLine(line);
+                var recordOpt = parser.parse(fields, idx);
+                if (recordOpt.isEmpty()) continue;
+                var record = recordOpt.get();
+                if (record.scheduledDepEpoch() < REPLAY_DAY_START
+                        || record.scheduledDepEpoch() >= REPLAY_DAY_END) continue;
+                if (record.tailNumber() == null || !tailNumbers.contains(record.tailNumber())) continue;
+                writer.write(line);
+                writer.newLine();
+                written++;
+            }
+        }
+        return written;
     }
 
     private static String hopKey(String carrierIata, String flightNumber, long scheduledDepEpoch) {
