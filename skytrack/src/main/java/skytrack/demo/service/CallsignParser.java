@@ -29,7 +29,9 @@ public class CallsignParser {
             Map.entry("ACA", "AC"),
             Map.entry("WJA", "WS"),
             Map.entry("FDX", "FX"),
-            Map.entry("UPS", "5X")
+            Map.entry("UPS", "5X"),
+            Map.entry("JIA", "OH"),
+            Map.entry("AAY", "G4")
     );
 
     public Optional<ParsedCallsign> parse(String callsign) {

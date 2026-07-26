@@ -65,4 +65,20 @@ class CallsignParserTest {
     void shouldReturnEmptyForUnknownCarrier() {
         assertThat(parser.parse("ZZZ999")).isEmpty();
     }
+
+    @Test
+    void shouldParsePsaAirlinesCallsign() {
+        Optional<ParsedCallsign> result = parser.parse("JIA5480");
+        assertThat(result).isPresent();
+        assertThat(result.get().icaoCarrierCode()).isEqualTo("JIA");
+        assertThat(result.get().iataCarrierCode()).isEqualTo("OH");
+    }
+
+    @Test
+    void shouldParseAllegiantCallsign() {
+        Optional<ParsedCallsign> result = parser.parse("AAY3227");
+        assertThat(result).isPresent();
+        assertThat(result.get().icaoCarrierCode()).isEqualTo("AAY");
+        assertThat(result.get().iataCarrierCode()).isEqualTo("G4");
+    }
 }
