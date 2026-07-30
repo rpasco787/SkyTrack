@@ -34,8 +34,12 @@ skytrack:
   disruption:
     window-minutes: 60
     bucket-size-minutes: 1
-    delay-threshold-minutes: 15
-    cascade-threshold-minutes: 30
+    # Tuned 2026-07-30 against the corrected cascade recall denominator (see
+    # docs/accuracy-stages-0-3-analysis.md). Dropping the cascade gate 30 -> 5 raises recall
+    # 0.366 -> 0.455 at unchanged precision (0.974 -> 0.972): the gate was refusing to start
+    # walks, not filtering bad ones. Going below delay-threshold 10 does start costing precision.
+    delay-threshold-minutes: 10
+    cascade-threshold-minutes: 5
     cascade-propagation-factor: 0.85
     en-route-recovery-factor: 0.15
     cascade-max-hops: 8
@@ -44,6 +48,9 @@ skytrack:
     bts-csv-path: data/bts/ontime-2026-03-09.csv
     min-turnaround-minutes: 45
     delay-threshold-minutes: 15
+    # Past this gap the aircraft has overnighted, so the next leg's delay is not attributable
+    # to the arrival that started the rotation walk.
+    max-rotation-lookahead-minutes: 360
 
 weather:
   mode: replay

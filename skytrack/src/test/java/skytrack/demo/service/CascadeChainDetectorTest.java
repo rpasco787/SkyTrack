@@ -25,6 +25,10 @@ class CascadeChainDetectorTest {
         return new DisruptionScoreProperties(60, 1, 15, 30, 0.85, recovery, maxHops);
     }
 
+    private PredictionProperties predProps() {
+        return new PredictionProperties(true, "x", 45, 15, 360);
+    }
+
     // Inbound UA100 lands ORD; tail N1 then flies ORD->DEN (UA200), DEN->SFO (UA300).
     private BtsScheduleRepository repo(long baseDep) {
         var inbound = new BtsFlightRecord("UA", "100", "N1", "IAH", "ORD",
@@ -44,24 +48,24 @@ class CascadeChainDetectorTest {
 
     private CascadeChainDetector detector(BtsScheduleRepository r, double recovery, int maxHops) {
         return new CascadeChainDetector(new CallsignParser(), r,
-                new TurnaroundEstimator(new PredictionProperties(true, "x", 45, 15), Map.of()),
-                props(recovery, maxHops), clock, Map.of());
+                new TurnaroundEstimator(new PredictionProperties(true, "x", 45, 15, 360), Map.of()),
+                props(recovery, maxHops), predProps(), clock, Map.of());
     }
 
     private CascadeChainDetector detectorWithTurnarounds(BtsScheduleRepository r,
                                                           double recovery, int maxHops,
                                                           Map<String, Long> turnarounds) {
         return new CascadeChainDetector(new CallsignParser(), r,
-                new TurnaroundEstimator(new PredictionProperties(true, "x", 45, 15), turnarounds),
-                props(recovery, maxHops), clock, Map.of());
+                new TurnaroundEstimator(new PredictionProperties(true, "x", 45, 15, 360), turnarounds),
+                props(recovery, maxHops), predProps(), clock, Map.of());
     }
 
     private CascadeChainDetector detectorWithRecovery(BtsScheduleRepository r,
                                                        Map<String, Double> routeRecovery,
                                                        int maxHops) {
         return new CascadeChainDetector(new CallsignParser(), r,
-                new TurnaroundEstimator(new PredictionProperties(true, "x", 45, 15), Map.of()),
-                props(0.15, maxHops), clock, routeRecovery);
+                new TurnaroundEstimator(new PredictionProperties(true, "x", 45, 15, 360), Map.of()),
+                props(0.15, maxHops), predProps(), clock, routeRecovery);
     }
 
     @Test
@@ -132,6 +136,20 @@ class CascadeChainDetectorTest {
         // slack with 3600s turnaround = (base+2h) - (base+1h) - 3600 = 3600 - 3600 = 0
         // depDelay1 = max(0, 7200 - 0) = 7200s  (vs 6300s with 2700s turnaround)
         var det = detectorWithTurnarounds(repo(base), 0.15, 8, Map.of("UA", 3600L));
+        var result = det.detect(arrival(base + H + 7200L, 7200L));
+
+        assertThat(result).isPresent();
+        assertThat(result.get().hops().get(0).predictedDepDelaySeconds()).isEqualTo(7200L);
+    }
+
+    @Test
+    void prefersTheTurnaroundFloorFittedForThisCarrierAtThisStation() {
+        long base = 100_000L;
+        // UA turns aircraft in 3600s at ORD but 1800s system-wide. leg1 departs ORD, so the
+        // station floor must win: slack = (base+2h) - (base+1h) - 3600 = 0, depDelay = 7200s.
+        // Had the carrier-wide 1800s been used, slack would be 1800s and depDelay 5400s.
+        var det = detectorWithTurnarounds(repo(base), 0.15, 8, Map.of("UA|ORD", 3600L, "UA", 1800L));
+
         var result = det.detect(arrival(base + H + 7200L, 7200L));
 
         assertThat(result).isPresent();

@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 import skytrack.demo.config.DisruptionScoreProperties;
+import skytrack.demo.config.PredictionProperties;
 import skytrack.demo.model.BtsFlightRecord;
 import skytrack.demo.model.CascadeChain;
 import skytrack.demo.model.CascadeHop;
@@ -36,6 +37,7 @@ public class CascadeChainDetector {
     private final BtsScheduleRepository repo;
     private final TurnaroundEstimator turnaroundEstimator;
     private final DisruptionScoreProperties props;
+    private final PredictionProperties predictionProps;
     private final Clock clock;
     private final Map<String, Double> routeRecoveryFactors;
 
@@ -43,12 +45,14 @@ public class CascadeChainDetector {
                                 BtsScheduleRepository repo,
                                 TurnaroundEstimator turnaroundEstimator,
                                 DisruptionScoreProperties props,
+                                PredictionProperties predictionProps,
                                 Clock clock,
                                 Map<String, Double> routeRecoveryFactors) {
         this.callsignParser = callsignParser;
         this.repo = repo;
         this.turnaroundEstimator = turnaroundEstimator;
         this.props = props;
+        this.predictionProps = predictionProps;
         this.clock = clock;
         this.routeRecoveryFactors = routeRecoveryFactors;
     }
@@ -79,12 +83,16 @@ public class CascadeChainDetector {
         long walkAfter = in.scheduledArrEpoch();
 
         for (int hop = 0; hop < props.cascadeMaxHops(); hop++) {
-            Optional<BtsFlightRecord> nextOpt = repo.findNextDeparture(tail, from, walkAfter);
+            Optional<BtsFlightRecord> nextOpt = repo.findNextDeparture(
+                    tail, from, walkAfter, predictionProps.maxRotationLookaheadSeconds());
             if (nextOpt.isEmpty()) break;
             BtsFlightRecord next = nextOpt.get();
             if (next.cancelled() || next.scheduledArrEpoch() == null) break;
 
-            long minTurnaround = turnaroundEstimator.minTurnaroundSeconds(next.carrierIata());
+            // The floor, not the expected turnaround: slack is the buffer before the rotation
+            // physically breaks, and it only truly runs out at the fastest achievable turn.
+            long minTurnaround = turnaroundEstimator.minTurnaroundSeconds(
+                    next.carrierIata(), next.origin());
             long slack = next.scheduledDepEpoch() - prevSchedArr - minTurnaround;
             long depDelay = Math.max(0, carried - slack);
             if (depDelay < thresholdSeconds) break;

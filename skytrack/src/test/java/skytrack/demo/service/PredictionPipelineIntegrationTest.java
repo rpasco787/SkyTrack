@@ -33,7 +33,7 @@ class PredictionPipelineIntegrationTest {
         Assumptions.assumeTrue(Files.exists(BTS_CSV),
                 "Skipping: skytrack/data/bts/btsdata.csv not present");
 
-        var props = new PredictionProperties(true, BTS_CSV.toString(), 45, 15);
+        var props = new PredictionProperties(true, BTS_CSV.toString(), 45, 15, 360);
         var tzResolver = new AirportTimeZoneResolver();
         var repo = BtsScheduleRepository.fromCsv(BTS_CSV.toString(), tzResolver);
 
@@ -41,14 +41,15 @@ class PredictionPipelineIntegrationTest {
                 "Skipping: BTS CSV loaded 0 records (check date format)");
 
         var callsignParser = new CallsignParser();
-        var resolver = new OutboundScheduleResolver(callsignParser, repo);
+        var resolver = new OutboundScheduleResolver(callsignParser, repo, props);
         var turnaround = new TurnaroundEstimator(props, Map.of());
         var predictor = new DelayPredictor();
 
         store = new RecentPredictionStore();
 
         service = new DelayPredictionService(
-                resolver, turnaround, predictor, props,
+                resolver, turnaround, predictor,
+                BaselineDelayPrior.from(repo, new AirportTimeZoneResolver()), props,
                 store,
                 mock(skytrack.demo.sqs.SqsAirportEventProducer.class),
                 mock(skytrack.demo.parquet.HistoricalPredictionWriter.class),

@@ -18,6 +18,7 @@ import skytrack.demo.parquet.HistoricalPredictionWriter;
 import skytrack.demo.service.AircraftStateMachine;
 import skytrack.demo.service.AirportLookupService;
 import skytrack.demo.service.AirportTimeZoneResolver;
+import skytrack.demo.service.BaselineDelayPrior;
 import skytrack.demo.service.BtsScheduleRepository;
 import skytrack.demo.service.CallsignParser;
 import skytrack.demo.service.BtsRowParser;
@@ -61,6 +62,8 @@ import static org.mockito.Mockito.mock;
  */
 class AccuracyBacktestIT {
 
+    private static final long TRAIN_START      = 1772323200L; // 2026-03-01 00:00 UTC
+    private static final long TRAIN_END        = 1773014400L; // 2026-03-09 00:00 UTC (exclusive)
     private static final long REPLAY_DAY_START = 1773014400L; // 2026-03-09 00:00 UTC
     private static final long REPLAY_DAY_END   = 1773187200L; // 2026-03-11 00:00 UTC (2-day window
                                                               // so evening rotations resolve)
@@ -70,7 +73,7 @@ class AccuracyBacktestIT {
 
     private record PredictionSample(String callsign, String route, long scheduledDepEpoch,
                                      long inboundDelaySeconds, long modelPredictedSeconds,
-                                     long actualSeconds) {}
+                                     long priorOnlySeconds, long actualSeconds) {}
 
     @Test
     void backtestPredictionAndCascadeAgainstBtsGroundTruth() throws Exception {
@@ -87,25 +90,35 @@ class AccuracyBacktestIT {
         var repo = BtsScheduleRepository.fromCsv(
                 "skytrack/data/bts/btsdata.csv", tzResolver, REPLAY_DAY_START, REPLAY_DAY_END);
         assumeTrue(repo.size() > 0);
-        var carrierTurnarounds = repo.medianTurnaroundSecondsByCarrier();
         var routeRecovery = repo.medianRecoveryFactorByRoute();
+
+        // Everything fitted rather than observed comes from days strictly before the replay day.
+        // Fitting the prior or the turnaround percentiles on 3/9 and then scoring 3/9 would leak
+        // the answer into the prediction and make the whole comparison meaningless.
+        var trainRepo = BtsScheduleRepository.fromCsv(
+                "skytrack/data/bts/btsdata.csv", tzResolver, TRAIN_START, TRAIN_END);
+        assumeTrue(trainRepo.size() > 0);
+        var carrierTurnarounds = trainRepo.pressuredTurnaroundP15ByCarrierAirport();
+        var expectedTurnarounds = trainRepo.pressuredTurnaroundP50ByCarrierAirport();
+        var baselinePrior = BaselineDelayPrior.from(trainRepo, tzResolver);
 
         // Phase 3: resolve arrivals and run the arms
         var callsignParser = new CallsignParser();
         var arrivalResolver = new BtsArrivalResolver(callsignParser, repo);
-        var outboundResolver = new OutboundScheduleResolver(callsignParser, repo);
-        var predProps = new PredictionProperties(true, "skytrack/data/bts/btsdata.csv", 45, 0);
-        var turnaroundEstimator = new TurnaroundEstimator(predProps, carrierTurnarounds);
+        var predProps = new PredictionProperties(true, "skytrack/data/bts/btsdata.csv", 45, 0, 360);
+        var outboundResolver = new OutboundScheduleResolver(callsignParser, repo, predProps);
+        var turnaroundEstimator = new TurnaroundEstimator(
+                predProps, carrierTurnarounds, expectedTurnarounds);
         var delayPredictor = new DelayPredictor();
         var predictionStore = new UnboundedPredictionStore();
         var predictionService = new DelayPredictionService(
-                outboundResolver, turnaroundEstimator, delayPredictor, predProps,
+                outboundResolver, turnaroundEstimator, delayPredictor, baselinePrior, predProps,
                 predictionStore, mock(SqsAirportEventProducer.class),
                 mock(HistoricalPredictionWriter.class), Clock.systemUTC());
 
-        var disruptionProps = new DisruptionScoreProperties(60, 1, 15, 30, 0.85, 0.15, 8);
+        var disruptionProps = new DisruptionScoreProperties(60, 1, 10, 5, 0.85, 0.15, 8);
         var cascadeDetector = new CascadeChainDetector(
-                callsignParser, repo, turnaroundEstimator, disruptionProps,
+                callsignParser, repo, turnaroundEstimator, disruptionProps, predProps,
                 Clock.systemUTC(), routeRecovery);
 
         List<ResolvedArrival> resolvedArrivals = new ArrayList<>();
@@ -138,10 +151,12 @@ class AccuracyBacktestIT {
                         OutboundFlight out = outboundOpt.get();
                         samples.add(new PredictionSample(
                                 arrival.callsign(),
-                                arrival.arrivalAirportIata() + "-" + out.departureAirportIata(),
+                                out.departureAirportIata() + "-" + out.destAirportIata(),
                                 out.scheduledDepEpoch(),
                                 arrival.delaySeconds(),
                                 event.predictedDelaySeconds(),
+                                baselinePrior.priorSeconds(out.carrierIata(),
+                                        out.departureAirportIata(), out.scheduledDepEpoch()),
                                 event.actualDelaySeconds()));
                     }
                 }
@@ -175,33 +190,60 @@ class AccuracyBacktestIT {
                         Math.round(s.inboundDelaySeconds() * FLAT_PROPAGATION_FACTOR), s.actualSeconds()))
                 .toList();
 
+        // Baseline term with no turnaround physics. If this matches the model arm, the pressure
+        // term is not earning its complexity.
+        List<ErrorMetrics.Pair> priorPairs = samples.stream()
+                .map(s -> new ErrorMetrics.Pair(s.priorOnlySeconds(), s.actualSeconds()))
+                .toList();
+
         ErrorMetrics modelError = ErrorMetrics.of(modelPairs);
         ErrorMetrics zeroError = ErrorMetrics.of(zeroPairs);
         ErrorMetrics flatError = ErrorMetrics.of(flatPairs);
+        ErrorMetrics priorError = ErrorMetrics.of(priorPairs);
         ClassificationMetrics modelClass = ClassificationMetrics.at(CLASSIFICATION_THRESHOLD_SECONDS, modelPairs);
         ClassificationMetrics zeroClass = ClassificationMetrics.at(CLASSIFICATION_THRESHOLD_SECONDS, zeroPairs);
         ClassificationMetrics flatClass = ClassificationMetrics.at(CLASSIFICATION_THRESHOLD_SECONDS, flatPairs);
+        ClassificationMetrics priorClass = ClassificationMetrics.at(CLASSIFICATION_THRESHOLD_SECONDS, priorPairs);
 
         var predictionAccuracySummary = new PredictionAccuracyService()
                 .summarize("ALL", predictionStore.allEvents());
 
+        // Primary hop target is the late-aircraft component. A turnaround model should be judged
+        // on the delay it claims to explain; total departure delay also contains carrier, NAS and
+        // weather causes it has no way to predict, so scoring against it charges the model for
+        // other people's problems.
         List<ErrorMetrics.Pair> cascadeHopPairs = chains.stream()
+                .flatMap(c -> c.hops().stream())
+                .filter(h -> h.lateAircraftDelaySeconds() != null)
+                .map(h -> new ErrorMetrics.Pair(h.predictedDepDelaySeconds(), h.lateAircraftDelaySeconds()))
+                .toList();
+        List<ErrorMetrics.Pair> cascadeHopTotalDelayPairs = chains.stream()
                 .flatMap(c -> c.hops().stream())
                 .filter(h -> h.actualDepDelaySeconds() != null)
                 .map(h -> new ErrorMetrics.Pair(h.predictedDepDelaySeconds(), h.actualDepDelaySeconds()))
                 .toList();
         ErrorMetrics cascadeError = ErrorMetrics.of(cascadeHopPairs);
+        ErrorMetrics cascadeTotalDelayError = ErrorMetrics.of(cascadeHopTotalDelayPairs);
         var cascadeAccuracySummary = new CascadeAccuracyService().summarize("ALL", chains);
 
-        // Cascade recall: BTS legs departing an airport we observed a landing at, with a real
-        // late-aircraft delay above threshold, that never showed up as an emitted hop.
+        // Cascade recall denominator. Counting every late-aircraft leg out of every observed
+        // airport across the whole 2-day BTS window measures data collection, not the detector:
+        // the replay covers roughly three hours, so most such legs have no causing arrival
+        // anywhere in the observation window and are structurally unreachable. Restrict to legs
+        // whose causing inbound rotation actually landed at an observed airport inside it.
         Set<String> observedAirports = resolvedArrivals.stream()
                 .map(ResolvedArrival::arrivalAirportIata)
                 .collect(Collectors.toSet());
+        long observedFrom = resolvedArrivals.stream()
+                .mapToLong(ResolvedArrival::actualArrivalTime).min().orElse(0L);
+        long observedTo = resolvedArrivals.stream()
+                .mapToLong(ResolvedArrival::actualArrivalTime).max().orElse(0L);
         List<BtsFlightRecord> candidateLateLegs = repo.all().stream()
                 .filter(r -> observedAirports.contains(r.origin()))
                 .filter(r -> r.lateAircraftDelaySeconds() != null
                         && r.lateAircraftDelaySeconds() > CLASSIFICATION_THRESHOLD_SECONDS)
+                .filter(r -> causingRotationWasObservable(
+                        repo, r, observedAirports, observedFrom, observedTo))
                 .toList();
         Set<String> emittedHopKeys = chains.stream()
                 .flatMap(c -> c.hops().stream())
@@ -228,14 +270,20 @@ class AccuracyBacktestIT {
         String report = BacktestReport.render(
                 Instant.now(),
                 funnel,
-                Map.of("model", modelError, "zero", zeroError, "flat", flatError),
-                Map.of("model", modelClass, "zero", zeroClass, "flat", flatClass),
+                Map.of("model", modelError, "prior", priorError,
+                        "zero", zeroError, "flat", flatError),
+                Map.of("model", modelClass, "prior", priorClass,
+                        "zero", zeroClass, "flat", flatClass),
                 predictionAccuracySummary,
                 cascadeAccuracySummary,
                 cascadeError,
+
+                cascadeTotalDelayError,
                 cascadeRecall,
                 cascadeF1,
-                worstCases);
+                worstCases,
+                List.of(DelayDistribution.of("train 03-01..03-08", trainRepo),
+                        DelayDistribution.of("eval 03-09..03-10", repo)));
 
         Path out = Path.of("docs/backtest-results-" + LocalDate.now() + ".md");
         Files.writeString(out, report);
@@ -331,6 +379,24 @@ class AccuracyBacktestIT {
             }
         }
         return written;
+    }
+
+    /**
+     * True when the rotation that caused {@code leg}'s late-aircraft delay is one the replay could
+     * have seen: the same tail's previous leg, arriving at an observed airport inside the observed
+     * window, at the airport this leg departs from.
+     */
+    private static boolean causingRotationWasObservable(BtsScheduleRepository repo,
+                                                        BtsFlightRecord leg,
+                                                        Set<String> observedAirports,
+                                                        long observedFrom, long observedTo) {
+        return repo.findPreviousLeg(leg.tailNumber(), leg.scheduledDepEpoch())
+                .filter(prev -> prev.dest().equals(leg.origin()))
+                .filter(prev -> observedAirports.contains(prev.dest()))
+                .filter(prev -> prev.scheduledArrEpoch() != null)
+                .filter(prev -> prev.scheduledArrEpoch() >= observedFrom
+                        && prev.scheduledArrEpoch() <= observedTo)
+                .isPresent();
     }
 
     private static String hopKey(String carrierIata, String flightNumber, long scheduledDepEpoch) {

@@ -20,6 +20,7 @@ public class DelayPredictionService {
     private final OutboundScheduleResolver resolver;
     private final TurnaroundEstimator turnaroundEstimator;
     private final DelayPredictor delayPredictor;
+    private final BaselineDelayPrior baselineDelayPrior;
     private final PredictionProperties props;
     private final RecentPredictionStore store;
     private final SqsAirportEventProducer eventProducer;
@@ -29,6 +30,7 @@ public class DelayPredictionService {
     public DelayPredictionService(OutboundScheduleResolver resolver,
                                    TurnaroundEstimator turnaroundEstimator,
                                    DelayPredictor delayPredictor,
+                                   BaselineDelayPrior baselineDelayPrior,
                                    PredictionProperties props,
                                    RecentPredictionStore store,
                                    SqsAirportEventProducer eventProducer,
@@ -37,6 +39,7 @@ public class DelayPredictionService {
         this.resolver = resolver;
         this.turnaroundEstimator = turnaroundEstimator;
         this.delayPredictor = delayPredictor;
+        this.baselineDelayPrior = baselineDelayPrior;
         this.props = props;
         this.store = store;
         this.eventProducer = eventProducer;
@@ -50,11 +53,18 @@ public class DelayPredictionService {
             if (outbound.isEmpty()) return;
             var out = outbound.get();
 
-            long min = turnaroundEstimator.minTurnaroundSeconds(out.carrierIata());
+            long turnaround = turnaroundEstimator.expectedTurnaroundSeconds(
+                    out.carrierIata(), out.departureAirportIata());
+            long prior = baselineDelayPrior.priorSeconds(
+                    out.carrierIata(), out.departureAirportIata(), out.scheduledDepEpoch());
             long predicted = delayPredictor.predictDelaySeconds(
-                    arrival.actualArrivalTime(), out.scheduledDepEpoch(), min);
+                    arrival.actualArrivalTime(), out.scheduledDepEpoch(), turnaround, prior);
 
-            if (predicted / 60 < props.delayThresholdMinutes()) return;
+            // Threshold 0 disables the gate entirely. Comparing in seconds rather than truncated
+            // minutes matters now that predictions are signed: integer division rounds toward
+            // zero, so a -1s and a -180s prediction would land on opposite sides of the same gate.
+            if (props.delayThresholdMinutes() > 0
+                    && predicted < props.delayThresholdMinutes() * 60L) return;
 
             var event = new PredictedDelayEvent(
                     arrival.callsign(),
@@ -64,7 +74,7 @@ public class DelayPredictionService {
                     out.flightNumber(),
                     arrival.actualArrivalTime(),
                     out.scheduledDepEpoch(),
-                    min,
+                    turnaround,
                     predicted,
                     DelayClassification.fromDelaySeconds(predicted),
                     out.actualDepDelaySeconds(),

@@ -54,13 +54,13 @@ class CascadeChainPipelineIntegrationTest {
                 "Skipping: BTS CSV loaded 0 records (check date format)");
 
         var props = new DisruptionScoreProperties(60, 1, 15, 30, 0.85, 0.15, 8);
-        var predProps = new PredictionProperties(true, BTS_CSV.toString(), 45, 15);
+        var predProps = new PredictionProperties(true, BTS_CSV.toString(), 45, 15, 360);
         var turnaround = new TurnaroundEstimator(predProps, Map.of());
         var clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC);
 
         store = new RecentCascadeStore();
         accuracyService = new CascadeAccuracyService();
-        detector = new CascadeChainDetector(new CallsignParser(), repo, turnaround, props, clock, Map.of());
+        detector = new CascadeChainDetector(new CallsignParser(), repo, turnaround, props, predProps, clock, Map.of());
     }
 
     @Test

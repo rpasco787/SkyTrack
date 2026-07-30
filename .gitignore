@@ -49,3 +49,6 @@ localstack/volume/
 
 # Generated WireMock schedule stubs (regenerate via WireMockStubGeneratorIT)
 wiremock/generated/
+# Large local datasets (BTS on-time CSV is ~190MB, airports is a symlink to data/)
+skytrack/data/bts/
+skytrack/data/airports

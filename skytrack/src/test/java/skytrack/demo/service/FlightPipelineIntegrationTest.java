@@ -111,8 +111,8 @@ class FlightPipelineIntegrationTest {
         mockEventProducer = mock(SqsAirportEventProducer.class);
         var cascadeChainDetector = new CascadeChainDetector(
                 new CallsignParser(), BtsScheduleRepository.empty(),
-                new TurnaroundEstimator(new skytrack.demo.config.PredictionProperties(false, "x", 45, 15), Map.of()),
-                disruptionProps, java.time.Clock.systemUTC(), Map.of());
+                new TurnaroundEstimator(new skytrack.demo.config.PredictionProperties(false, "x", 45, 15, 360), Map.of()),
+                disruptionProps, new skytrack.demo.config.PredictionProperties(false, "x", 45, 15, 360), java.time.Clock.systemUTC(), Map.of());
         var weatherCache = mock(WeatherCache.class);
         org.mockito.Mockito.when(weatherCache.get(any())).thenReturn(Optional.empty());
         var delayEventProcessor = new DelayEventProcessor(

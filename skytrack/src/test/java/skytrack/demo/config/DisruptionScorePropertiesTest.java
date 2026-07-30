@@ -18,11 +18,14 @@ class DisruptionScorePropertiesTest {
 
     @Test
     void shouldApplyDefaults() {
+        // Gates tuned 2026-07-30 against the corrected cascade recall denominator: 30/15 -> 5/10.
+        // Lowering the cascade gate costs no precision (0.974 -> 0.972) and lifts recall
+        // 0.366 -> 0.455, because the gate refused to start walks rather than filtering bad ones.
         var props = new DisruptionScoreProperties(0, 0, 0, 0, 0, 0.0, 0);
         assertThat(props.windowMinutes()).isEqualTo(60);
         assertThat(props.bucketSizeMinutes()).isEqualTo(1);
-        assertThat(props.delayThresholdMinutes()).isEqualTo(15);
-        assertThat(props.cascadeThresholdMinutes()).isEqualTo(30);
+        assertThat(props.delayThresholdMinutes()).isEqualTo(10);
+        assertThat(props.cascadeThresholdMinutes()).isEqualTo(5);
         assertThat(props.cascadePropagationFactor()).isEqualTo(0.85);
     }
 
