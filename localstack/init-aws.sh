@@ -1,13 +1,36 @@
 #!/bin/bash
 echo "Creating SQS FIFO queues..."
 
+echo "Creating dead-letter queue..."
+
 awslocal sqs create-queue \
-  --queue-name skytrack-positions.fifo \
+  --queue-name skytrack-dlq.fifo \
   --attributes '{
     "FifoQueue": "true",
     "ContentBasedDeduplication": "true",
-    "VisibilityTimeout": "30"
+    "MessageRetentionPeriod": "1209600"
   }'
+
+DLQ_ARN=$(awslocal sqs get-queue-attributes \
+  --queue-url http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/skytrack-dlq.fifo \
+  --attribute-names QueueArn \
+  --query 'Attributes.QueueArn' --output text)
+
+if [[ -z "$DLQ_ARN" || "$DLQ_ARN" == "None" ]]; then
+  echo "FATAL: could not resolve DLQ ARN — refusing to create positions queue" >&2
+  exit 1
+fi
+
+echo "Creating pipeline queues..."
+
+awslocal sqs create-queue \
+  --queue-name skytrack-positions.fifo \
+  --attributes "{
+    \"FifoQueue\": \"true\",
+    \"ContentBasedDeduplication\": \"true\",
+    \"VisibilityTimeout\": \"30\",
+    \"RedrivePolicy\": \"{\\\"deadLetterTargetArn\\\":\\\"$DLQ_ARN\\\",\\\"maxReceiveCount\\\":\\\"5\\\"}\"
+  }"
 
 awslocal sqs create-queue \
   --queue-name skytrack-airport-events.fifo \
