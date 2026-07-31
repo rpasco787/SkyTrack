@@ -8,16 +8,22 @@ import skytrack.demo.model.PredictedDelayEvent;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 
+import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class HistoricalPredictionWriterTest {
 
@@ -29,6 +35,16 @@ class HistoricalPredictionWriterTest {
         return new PredictedDelayEvent(
                 "UAL1234", "N12345", iata,
                 "UA", "5678",
+                1773088200L, 1773090000L, 2700L, 960L,
+                DelayClassification.MINOR, 900L, "BTS_REPLAY",
+                Instant.parse("2026-03-09T20:30:00Z"));
+    }
+
+    /** Identity-bearing event, so a test can prove <em>which</em> events survived a drop. */
+    private static PredictedDelayEvent numbered(int i) {
+        return new PredictedDelayEvent(
+                "UAL" + i, "N12345", "ORD",
+                "UA", String.valueOf(i),
                 1773088200L, 1773090000L, 2700L, 960L,
                 DelayClassification.MINOR, 900L, "BTS_REPLAY",
                 Instant.parse("2026-03-09T20:30:00Z"));
@@ -86,5 +102,160 @@ class HistoricalPredictionWriterTest {
 
         writer.buffer(event("ORD"));
         writer.flush();
+    }
+
+    @Test
+    void retainsTheBatchForRetryWhenS3PutFails() throws Exception {
+        S3Client s3 = mock(S3Client.class);
+        when(s3.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(new RuntimeException("s3 down"))
+                .thenReturn(PutObjectResponse.builder().build());
+        ParquetSerializer serializer = spy(new ParquetSerializer());
+        var writer = new HistoricalPredictionWriter(s3, serializer, props, clock);
+
+        writer.buffer(numbered(7));
+        writer.flush(); // fails — batch must survive
+
+        writer.flush(); // succeeds — must re-send the same event
+
+        verify(s3, times(2)).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+
+        ArgumentCaptor<List<PredictionParquetRow>> rows = ArgumentCaptor.captor();
+        verify(serializer, times(2)).serializePredictions(rows.capture());
+        assertThat(rows.getAllValues().get(1))
+                .as("the retry must re-send the very event the failed put dropped")
+                .extracting(PredictionParquetRow::inboundCallsign)
+                .containsExactly("UAL7");
+        assertThat(writer.retainedCount())
+                .as("a successful retry must clear the backlog")
+                .isZero();
+    }
+
+    @Test
+    void dropsTheBatchWhenSerializationFailsRatherThanRetryingForever() throws Exception {
+        S3Client s3 = mock(S3Client.class);
+        ParquetSerializer serializer = mock(ParquetSerializer.class);
+        when(serializer.serializePredictions(any())).thenThrow(new IOException("unserializable row"));
+        var writer = new HistoricalPredictionWriter(s3, serializer, props, clock);
+
+        writer.buffer(event("ORD"));
+        writer.flush();
+
+        assertThat(writer.retainedCount())
+                .as("a deterministic serialization failure can never succeed on retry")
+                .isZero();
+
+        writer.flush();
+        verify(s3, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    void dropsOldestWhenTheRetryBacklogExceedsItsCap() throws Exception {
+        S3Client s3 = mock(S3Client.class);
+        when(s3.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenThrow(new RuntimeException("s3 down"))
+                .thenReturn(PutObjectResponse.builder().build());
+        ParquetSerializer serializer = spy(new ParquetSerializer());
+        var writer = new HistoricalPredictionWriter(s3, serializer, props, clock);
+
+        int cap = HistoricalPredictionWriter.MAX_RETAINED_EVENTS;
+        for (int i = 0; i < cap + 10; i++) {
+            writer.buffer(numbered(i));
+        }
+        writer.flush();
+
+        assertThat(writer.retainedCount())
+                .as("must retain exactly as much as the cap allows — no more, no less")
+                .isEqualTo(cap);
+
+        writer.flush(); // succeeds — reveals which events survived
+        ArgumentCaptor<List<PredictionParquetRow>> rows = ArgumentCaptor.captor();
+        verify(serializer, times(2)).serializePredictions(rows.capture());
+        List<PredictionParquetRow> retained = rows.getAllValues().get(1);
+        assertThat(retained).hasSize(cap);
+        assertThat(retained.get(0).inboundCallsign())
+                .as("the 10 oldest events are the ones that must have been dropped")
+                .isEqualTo("UAL10");
+        assertThat(retained.get(retained.size() - 1).inboundCallsign())
+                .as("the newest event must always survive")
+                .isEqualTo("UAL" + (cap + 9));
+    }
+
+    @Test
+    void keepsTheNewestWhenEventsArriveDuringAFailedPut() throws Exception {
+        S3Client s3 = mock(S3Client.class);
+        ParquetSerializer serializer = spy(new ParquetSerializer());
+        var writer = new HistoricalPredictionWriter(s3, serializer, props, clock);
+
+        int cap = HistoricalPredictionWriter.MAX_RETAINED_EVENTS;
+        // The pipeline keeps buffering while the (slow) put is in flight; drain() has already
+        // emptied the buffer, so this newer event lands ahead of the batch being retried.
+        when(s3.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenAnswer(inv -> {
+                    writer.buffer(numbered(999_999));
+                    throw new RuntimeException("s3 down");
+                })
+                .thenReturn(PutObjectResponse.builder().build());
+
+        for (int i = 0; i < cap; i++) {
+            writer.buffer(numbered(i));
+        }
+        writer.flush(); // fails, and one newer event arrives mid-put
+
+        assertThat(writer.retainedCount()).isEqualTo(cap);
+
+        writer.flush();
+        ArgumentCaptor<List<PredictionParquetRow>> rows = ArgumentCaptor.captor();
+        verify(serializer, times(2)).serializePredictions(rows.capture());
+        assertThat(rows.getAllValues().get(1))
+                .as("overflow must evict the oldest event, never the one that just arrived")
+                .extracting(PredictionParquetRow::inboundCallsign)
+                .contains("UAL999999")
+                .doesNotContain("UAL0");
+    }
+
+    @Test
+    void keepsEveryArrivalAcrossConsecutiveFailedPuts() throws Exception {
+        S3Client s3 = mock(S3Client.class);
+        ParquetSerializer serializer = spy(new ParquetSerializer());
+        var writer = new HistoricalPredictionWriter(s3, serializer, props, clock);
+
+        int cap = HistoricalPredictionWriter.MAX_RETAINED_EVENTS;
+        // A sustained outage: two failed puts, each with an event arriving mid-put. The retained
+        // batch must go back ahead of those arrivals, or cycle 2 finds the newest event at the
+        // head of the batch and trims exactly the event it should be keeping.
+        when(s3.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                .thenAnswer(inv -> {
+                    writer.buffer(numbered(1_000_000));
+                    throw new RuntimeException("s3 down");
+                })
+                .thenAnswer(inv -> {
+                    writer.buffer(numbered(1_000_001));
+                    throw new RuntimeException("s3 down");
+                })
+                .thenReturn(PutObjectResponse.builder().build());
+
+        for (int i = 0; i < cap; i++) {
+            writer.buffer(numbered(i));
+        }
+        writer.flush(); // fail 1
+        writer.flush(); // fail 2
+        writer.flush(); // succeeds
+
+        ArgumentCaptor<List<PredictionParquetRow>> rows = ArgumentCaptor.captor();
+        verify(serializer, times(3)).serializePredictions(rows.capture());
+        List<PredictionParquetRow> retained = rows.getAllValues().get(2);
+
+        assertThat(retained).hasSize(cap);
+        assertThat(retained)
+                .as("every event that arrived mid-outage must survive; only the oldest are dropped")
+                .extracting(PredictionParquetRow::inboundCallsign)
+                .contains("UAL1000000", "UAL1000001")
+                .doesNotContain("UAL0", "UAL1");
+        assertThat(retained.get(0).inboundCallsign()).isEqualTo("UAL2");
+        assertThat(retained)
+                .as("the retained set must stay chronological, so parquet column stats stay tight")
+                .extracting(PredictionParquetRow::inboundCallsign)
+                .endsWith("UAL1000000", "UAL1000001");
     }
 }
