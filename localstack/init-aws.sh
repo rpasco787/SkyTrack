@@ -17,6 +17,14 @@ awslocal sqs create-queue \
     "VisibilityTimeout": "30"
   }'
 
+awslocal sqs create-queue \
+  --queue-name skytrack-predictions.fifo \
+  --attributes '{
+    "FifoQueue": "true",
+    "ContentBasedDeduplication": "true",
+    "VisibilityTimeout": "30"
+  }'
+
 echo "Queues created:"
 awslocal sqs list-queues
 

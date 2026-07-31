@@ -1,5 +1,7 @@
 package skytrack.demo.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import skytrack.demo.service.AirportTimeZoneResolver;
@@ -11,11 +13,34 @@ import java.util.Map;
 @Configuration
 public class PredictionConfig {
 
+    private static final Logger log = LoggerFactory.getLogger(PredictionConfig.class);
+
+    /**
+     * An empty repository here disables prediction everywhere downstream without any downstream
+     * component being able to say so — {@code OutboundScheduleResolver} just returns empty and
+     * {@code DelayPredictionService} returns before predicting. So this is the only place that can
+     * report the condition, and it does so at startup rather than waiting to be asked.
+     * {@link BtsScheduleHealthIndicator} exposes the same state on {@code /actuator/health}.
+     */
     @Bean
     BtsScheduleRepository btsScheduleRepository(PredictionProperties props,
                                                         AirportTimeZoneResolver tz) {
-        if (!props.enabled()) return BtsScheduleRepository.empty();
-        return BtsScheduleRepository.fromCsv(props.btsCsvPath(), tz);
+        if (!props.enabled()) {
+            log.info("Delay prediction is disabled (skytrack.prediction.enabled=false) — "
+                    + "no departure predictions will be emitted");
+            return BtsScheduleRepository.empty();
+        }
+
+        var repo = BtsScheduleRepository.fromCsv(props.btsCsvPath(), tz);
+        if (repo.size() == 0) {
+            log.warn("BTS schedule loaded 0 records from {} — every prediction will be skipped "
+                    + "silently. The path is resolved against the application working directory; "
+                    + "check it points at the on-time CSV and that its date format parses.",
+                    props.btsCsvPath());
+        } else {
+            log.info("BTS schedule loaded {} records from {}", repo.size(), props.btsCsvPath());
+        }
+        return repo;
     }
 
     /**

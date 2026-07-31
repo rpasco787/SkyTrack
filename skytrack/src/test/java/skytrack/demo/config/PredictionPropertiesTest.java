@@ -18,7 +18,7 @@ class PredictionPropertiesTest {
     @Test
     void shouldApplyDefaults() {
         var props = new PredictionProperties(false, null, 0, 0, 360);
-        assertThat(props.btsCsvPath()).isEqualTo("data/bts/ontime-2026-03-09.csv");
+        assertThat(props.btsCsvPath()).isEqualTo("data/bts/btsdata.csv");
         assertThat(props.minTurnaroundMinutes()).isEqualTo(45);
         assertThat(props.delayThresholdMinutes()).isEqualTo(0);
     }
