@@ -6,6 +6,7 @@ import skytrack.demo.model.FlightPosition;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.SendMessageBatchRequest;
 import software.amazon.awssdk.services.sqs.model.SendMessageBatchRequestEntry;
+import software.amazon.awssdk.services.sqs.model.SendMessageBatchResponse;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
@@ -52,12 +53,20 @@ public class SqsPositionProducer {
                         .build());
             }
 
-            sqsClient.sendMessageBatch(SendMessageBatchRequest.builder()
+            SendMessageBatchResponse response = sqsClient.sendMessageBatch(SendMessageBatchRequest.builder()
                     .queueUrl(queueUrl)
                     .entries(entries)
                     .build());
 
-            log.debug("Sent batch of {} positions to SQS", batch.size());
+            if (!response.failed().isEmpty()) {
+                // SQS returns 200 for a batch where individual entries failed. Without this the loss is
+                // invisible: the positions are simply never queued and nothing downstream can tell.
+                log.error("SQS rejected {} of {} positions in batch (first: {} - {})",
+                        response.failed().size(), entries.size(),
+                        response.failed().get(0).code(), response.failed().get(0).message());
+            }
+
+            log.debug("Sent batch of {} positions to SQS", batch.size() - response.failed().size());
         } catch (Exception e) {
             log.error("Failed to send batch of {} positions to SQS", batch.size(), e);
         }
