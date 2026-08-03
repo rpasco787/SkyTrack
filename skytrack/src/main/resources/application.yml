@@ -18,7 +18,7 @@ sqs:
   positions-queue-name: skytrack-positions.fifo
   airport-events-queue-name: skytrack-airport-events.fifo
   prediction-queue-name: skytrack-predictions.fifo
-  consumer-threads: 1   # parallel SQS poll dispatch; raise for high-throughput replay
+  consumer-threads: 4   # continuous workers; each blocks on a 20s long-poll when idle
 
 aeroapi:
   enabled: false
