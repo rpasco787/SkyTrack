@@ -39,7 +39,7 @@ class LandingSeedExtractorIT {
                 airportLookup, new StateMachineProperties(150, 50, 5, 300, 120));
         var replay = new ReplayOpenSkyClient(
                 new OpenSkyProperties("replay", null, null, null,
-                        "./skytrack/data/recorded-opensky/", 1),
+                        "./skytrack/data/recorded-opensky/", 1, false),
                 new ObjectMapper());
 
         Map<String, AircraftTrack> tracks = new HashMap<>();

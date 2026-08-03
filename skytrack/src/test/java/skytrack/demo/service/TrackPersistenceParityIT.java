@@ -65,7 +65,7 @@ class TrackPersistenceParityIT {
                 persistIntervalSeconds == 0 ? 1 : persistIntervalSeconds);
         var stateMachine = new AircraftStateMachine(airportLookup, props);
         var replay = new ReplayOpenSkyClient(
-                new OpenSkyProperties("replay", null, null, null, REPLAY_DIR, 1), new ObjectMapper());
+                new OpenSkyProperties("replay", null, null, null, REPLAY_DIR, 1, false), new ObjectMapper());
 
         Map<String, AircraftTrack> persisted = new HashMap<>();
         List<LandingEvent> landings = new ArrayList<>();

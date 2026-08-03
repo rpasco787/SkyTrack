@@ -20,12 +20,16 @@ public class ReplayOpenSkyClient implements FlightDataSource {
 
     private final List<Path> replayFiles;
     private final ObjectMapper mapper;
+    private final boolean loop;
     private final AtomicInteger index = new AtomicInteger(0);
 
     public ReplayOpenSkyClient(OpenSkyProperties properties, ObjectMapper mapper) {
         this.mapper = mapper;
         this.replayFiles = loadSortedFiles(Path.of(properties.replayDir()));
-        log.info("Replay client loaded {} files from {}", replayFiles.size(), properties.replayDir());
+        // Held as a field rather than the whole record: fetchPositions needs it on every call.
+        this.loop = properties.replayLoop();
+        log.info("Replay client loaded {} files from {} (loop={})",
+                replayFiles.size(), properties.replayDir(), loop);
     }
 
     private static List<Path> loadSortedFiles(Path dir) {
@@ -46,10 +50,23 @@ public class ReplayOpenSkyClient implements FlightDataSource {
 
     @Override
     public List<FlightPosition> fetchPositions() {
+        if (replayFiles.isEmpty()) {
+            return List.of();
+        }
+
         int i = index.getAndIncrement();
         if (i >= replayFiles.size()) {
-            log.info("Replay complete — no more files");
-            return List.of();
+            if (!loop) {
+                log.info("Replay complete — no more files");
+                return List.of();
+            }
+            // Wrap for soak testing. Timestamps repeat, so FIFO content-based dedup suppresses some
+            // replayed positions and landing detection re-fires; this mode is for load testing the
+            // pipeline, not for accuracy measurement.
+            i = i % replayFiles.size();
+            if (i == 0) {
+                log.info("Replay wrapped to the start ({} files)", replayFiles.size());
+            }
         }
 
         Path file = replayFiles.get(i);

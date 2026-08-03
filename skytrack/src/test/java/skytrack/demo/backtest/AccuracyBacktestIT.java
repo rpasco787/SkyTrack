@@ -409,7 +409,7 @@ class AccuracyBacktestIT {
         var stateMachine = new AircraftStateMachine(
                 airportLookup, new StateMachineProperties(150, 50, 5, 300, 120));
         var replay = new ReplayOpenSkyClient(
-                new OpenSkyProperties("replay", null, null, null, replayDir, 1),
+                new OpenSkyProperties("replay", null, null, null, replayDir, 1, false),
                 new ObjectMapper());
 
         Map<String, AircraftTrack> tracks = new HashMap<>();
