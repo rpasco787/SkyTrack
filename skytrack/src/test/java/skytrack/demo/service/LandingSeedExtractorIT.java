@@ -36,7 +36,7 @@ class LandingSeedExtractorIT {
         var airportLookup = new AirportLookupService("data/airports/airports.csv");
         airportLookup.loadAirports();
         var stateMachine = new AircraftStateMachine(
-                airportLookup, new StateMachineProperties(150, 50, 5, 300));
+                airportLookup, new StateMachineProperties(150, 50, 5, 300, 120));
         var replay = new ReplayOpenSkyClient(
                 new OpenSkyProperties("replay", null, null, null,
                         "./skytrack/data/recorded-opensky/", 1),

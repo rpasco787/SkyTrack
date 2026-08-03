@@ -39,6 +39,10 @@ skytrack:
     approach-radius-km: 50
     ground-radius-km: 5
     stale-timeout-seconds: 300
+    # How long a track may go unwritten when nothing changed. MUST stay below
+    # stale-timeout-seconds: a track whose lastSeen falls outside that window resets to
+    # UNKNOWN, and a landing observed from UNKNOWN is not emitted.
+    persist-interval-seconds: 120
   disruption:
     window-minutes: 60
     bucket-size-minutes: 1

@@ -77,7 +77,7 @@ class FlightPipelineIntegrationTest {
         var airportLookup = new AirportLookupService("data/airports/airports.csv");
         airportLookup.loadAirports();
 
-        var smProps = new StateMachineProperties(150.0, 50.0, 5.0, 300);
+        var smProps = new StateMachineProperties(150.0, 50.0, 5.0, 300, 120);
         var stateMachine = new AircraftStateMachine(airportLookup, smProps);
         var callsignParser = new CallsignParser();
         var routeAverageEstimator = new RouteAverageEstimator();
@@ -123,7 +123,7 @@ class FlightPipelineIntegrationTest {
                 mock(DelayPredictionService.class));
 
         handler = new StatefulFlightPositionHandler(
-                repository, stateMachine, scheduleResolver, delayEventProcessor);
+                repository, stateMachine, scheduleResolver, delayEventProcessor, smProps);
     }
 
     @AfterAll
