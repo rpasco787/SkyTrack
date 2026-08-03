@@ -30,7 +30,8 @@ class LiveOpenSkyClientManualTest {
                 clientId,
                 clientSecret,
                 null,
-                1
+                1,
+                false
         );
 
         var client = new LiveOpenSkyClient(props, new ObjectMapper());

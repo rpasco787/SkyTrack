@@ -138,6 +138,19 @@ class DisruptionScoreServiceTest {
     }
 
     @Test
+    void evictsExpiredBucketsOnWriteWithoutAnyScoreQuery() {
+        // windowMinutes = 60. Record one arrival, then another three hours later. The first bucket
+        // is outside the window of the second and must be gone without computeScore() being called.
+        long t0 = 1_773_000_000L;
+        service.recordDelay(delayEvent("ORD", t0, 1800, DelayClassification.MODERATE));
+        service.recordDelay(delayEvent("ORD", t0 + 3 * 3600, 1800, DelayClassification.MODERATE));
+
+        assertThat(service.bucketCount("ORD"))
+                .as("eviction must not depend on someone querying the airport")
+                .isEqualTo(1);
+    }
+
+    @Test
     void shouldIgnoreNullAirportCode() {
         var event = new DelayEvent("abc123", "UAL1234", "UA", "1234",
                 "KORD", null, 1709312400L, null, null,

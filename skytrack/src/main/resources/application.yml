@@ -2,6 +2,14 @@ spring:
   application:
     name: skytrack
 
+management:
+  endpoint:
+    health:
+      # The btsSchedule indicator carries its diagnosis in the details (record count, resolved
+      # CSV path); with the default "never" the endpoint reports a bare DOWN and the reason is
+      # lost. Revisit if /actuator is ever exposed outside a trusted network.
+      show-details: always
+
 opensky:
   mode: replay
   poll-rate-ms: 30000   # producer snapshot cadence; lower = faster replay
@@ -10,7 +18,7 @@ sqs:
   positions-queue-name: skytrack-positions.fifo
   airport-events-queue-name: skytrack-airport-events.fifo
   prediction-queue-name: skytrack-predictions.fifo
-  consumer-threads: 1   # parallel SQS poll dispatch; raise for high-throughput replay
+  consumer-threads: 4   # continuous workers; each blocks on a 20s long-poll when idle
 
 aeroapi:
   enabled: false
@@ -31,6 +39,10 @@ skytrack:
     approach-radius-km: 50
     ground-radius-km: 5
     stale-timeout-seconds: 300
+    # How long a track may go unwritten when nothing changed. MUST stay below
+    # stale-timeout-seconds: a track whose lastSeen falls outside that window resets to
+    # UNKNOWN, and a landing observed from UNKNOWN is not emitted.
+    persist-interval-seconds: 120
   disruption:
     window-minutes: 60
     bucket-size-minutes: 1
@@ -44,8 +56,13 @@ skytrack:
     en-route-recovery-factor: 0.15
     cascade-max-hops: 8
   prediction:
-    enabled: false
-    bts-csv-path: data/bts/ontime-2026-03-09.csv
+    # Gates the BTS repository: false substitutes an empty one, so OutboundScheduleResolver
+    # resolves nothing and the pipeline emits zero predictions without logging a thing.
+    # PredictionWiringTest fails if this is turned off.
+    enabled: true
+    # Relative to the app's working directory (skytrack/), which is NOT the test working
+    # directory — surefire runs from the repo root, so tests override this path explicitly.
+    bts-csv-path: data/bts/btsdata.csv
     min-turnaround-minutes: 45
     delay-threshold-minutes: 15
     # Past this gap the aircraft has overnighted, so the next leg's delay is not attributable

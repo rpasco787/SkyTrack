@@ -11,7 +11,7 @@ public record PredictionProperties(
         int maxRotationLookaheadMinutes) {
 
     public PredictionProperties {
-        if (btsCsvPath == null) btsCsvPath = "data/bts/ontime-2026-03-09.csv";
+        if (btsCsvPath == null) btsCsvPath = "data/bts/btsdata.csv";
         if (minTurnaroundMinutes <= 0) minTurnaroundMinutes = 45;
         // 0 is the backtest escape hatch (disables emit gating); only negative values default.
         if (delayThresholdMinutes < 0) delayThresholdMinutes = 15;

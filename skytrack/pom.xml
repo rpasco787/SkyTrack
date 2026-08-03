@@ -151,6 +151,21 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 				<configuration>
+					<!--
+					  DevTools loads application classes in a RestartClassLoader while libraries
+					  stay on the base loader. The DynamoDB enhanced client builds its TableSchema
+					  once against the base loader and holds AircraftTrack, so every position
+					  throws "AircraftTrack cannot be cast to AircraftTrack" in
+					  StatefulFlightPositionHandler and the pipeline detects zero landings — the
+					  whole app, not just prediction.
+
+					  This has to be a JVM system property: setting
+					  spring.devtools.restart.enabled in application-local.yml stops restarts but
+					  still initialises the RestartClassLoader, so the casts keep failing
+					  (verified — 160 errors, 0 predictions). Hot restart cannot work with this
+					  app as built, and buys nothing for a replay run.
+					-->
+					<jvmArguments>-Dspring.devtools.restart.enabled=false</jvmArguments>
 					<excludes>
 						<exclude>
 							<groupId>org.projectlombok</groupId>

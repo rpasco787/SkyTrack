@@ -1,13 +1,22 @@
 package skytrack.demo.config;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.LoggerFactory;
 import skytrack.demo.model.BtsFlightRecord;
 import skytrack.demo.service.AirportTimeZoneResolver;
 import skytrack.demo.service.BaselineDelayPrior;
 import skytrack.demo.service.BtsScheduleRepository;
 import skytrack.demo.service.TestRepos;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -66,6 +75,54 @@ class PredictionConfigTest {
 
         assertThat(config.carrierTurnarounds(repo)).containsEntry("UA|ORD", 1000L);
         assertThat(config.expectedTurnarounds(repo)).containsEntry("UA|ORD", 2100L);
+    }
+
+    /** Captures what {@link PredictionConfig} logs while building the repository bean. */
+    private static List<ILoggingEvent> captureStartupLog(Runnable action) {
+        var logger = (ch.qos.logback.classic.Logger)
+                LoggerFactory.getLogger(PredictionConfig.class);
+        var appender = new ListAppender<ILoggingEvent>();
+        appender.setContext((LoggerContext) LoggerFactory.getILoggerFactory());
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            action.run();
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+        return appender.list;
+    }
+
+    @Test
+    void warnsAtStartupWhenTheCsvLoadsZeroRecords(@TempDir Path tmp) throws Exception {
+        // A header-only CSV reads cleanly and parses to nothing — the exact silent state a
+        // missing file would not produce, since fromCsv throws on those.
+        Path emptyCsv = tmp.resolve("empty.csv");
+        Files.writeString(emptyCsv, "FL_DATE,OP_UNIQUE_CARRIER,OP_CARRIER_FL_NUM,TAIL_NUM\n");
+        var props = new PredictionProperties(true, emptyCsv.toString(), 45, 15, 360);
+
+        List<ILoggingEvent> events = captureStartupLog(() ->
+                new PredictionConfig().btsScheduleRepository(props, new AirportTimeZoneResolver()));
+
+        assertThat(events)
+                .as("a zero-record load must announce itself; nothing downstream can")
+                .anySatisfy(e -> {
+                    assertThat(e.getLevel()).isEqualTo(Level.WARN);
+                    assertThat(e.getFormattedMessage())
+                            .contains("0 records")
+                            .contains(emptyCsv.toString());
+                });
+    }
+
+    @Test
+    void doesNotWarnWhenPredictionIsDeliberatelyDisabled() {
+        var props = new PredictionProperties(false, "unused.csv", 45, 15, 360);
+
+        List<ILoggingEvent> events = captureStartupLog(() ->
+                new PredictionConfig().btsScheduleRepository(props, new AirportTimeZoneResolver()));
+
+        assertThat(events).noneSatisfy(e -> assertThat(e.getLevel()).isEqualTo(Level.WARN));
     }
 
     @Test

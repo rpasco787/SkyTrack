@@ -22,14 +22,16 @@ public class AircraftStateMachine {
     public StateTransitionResult process(AircraftTrack track, FlightPosition position) {
         AircraftState currentState = track.getAircraftState();
 
-        // Check for stale timeout
+        // Check for stale timeout. lastSeen is the last *persisted* contact, so the threshold is
+        // widened by the persist interval — see StateMachineProperties#effectiveStaleTimeoutSeconds.
         if (track.getLastSeen() != null
-                && (position.lastContact() - track.getLastSeen()) > props.staleTimeoutSeconds()) {
+                && (position.lastContact() - track.getLastSeen()) > props.effectiveStaleTimeoutSeconds()) {
             updateTrackFields(track, position);
             track.setAircraftState(AircraftState.UNKNOWN);
             track.setStateEnteredAt(position.lastContact());
             track.setNearestAirportIcao(null);
-            return new StateTransitionResult(track, Optional.empty());
+            return new StateTransitionResult(track, Optional.empty(),
+                    currentState != AircraftState.UNKNOWN);
         }
 
         Optional<Airport> groundAirport = airportLookup.findNearest(
@@ -96,7 +98,7 @@ public class AircraftStateMachine {
         }
 
         updateTrackFields(track, position);
-        return new StateTransitionResult(track, landingEvent);
+        return new StateTransitionResult(track, landingEvent, newState != currentState);
     }
 
     private void updateTrackFields(AircraftTrack track, FlightPosition position) {

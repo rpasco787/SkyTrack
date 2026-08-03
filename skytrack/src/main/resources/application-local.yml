@@ -3,6 +3,11 @@ opensky:
   replay-dir: ./data/recorded-opensky/
   replay-speed-multiplier: 1
   poll-rate-ms: 2000    # 15x faster than prod default for local replay
+  # Wrap back to the first snapshot when the 370 files run out, so a soak run outlasts the ~3.1h
+  # (prod) / ~12min (local) window. Local only: timestamps repeat, so FIFO dedup suppresses some
+  # replayed positions and landings re-fire. Never set this where accuracy is being measured — the
+  # backtest harnesses iterate until fetchPositions() returns empty and would loop forever.
+  replay-loop: true
 
 sqs:
   endpoint: http://localhost:4566

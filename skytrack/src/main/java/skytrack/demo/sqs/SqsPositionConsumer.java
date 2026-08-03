@@ -26,7 +26,12 @@ public class SqsPositionConsumer {
         this.handler = handler;
     }
 
-    public void poll() {
+    /**
+     * @return the number of messages received, or 0 if the queue was empty or the poll failed.
+     *         Callers loop on this to distinguish "did work" from "found nothing / errored", which
+     *         a continuous worker needs in order to back off instead of spinning.
+     */
+    public int poll() {
         try {
             ReceiveMessageResponse response = sqsClient.receiveMessage(ReceiveMessageRequest.builder()
                     .queueUrl(queueUrl)
@@ -36,7 +41,7 @@ public class SqsPositionConsumer {
 
             List<Message> messages = response.messages();
             if (messages.isEmpty()) {
-                return;
+                return 0;
             }
 
             log.debug("Received {} messages from SQS", messages.size());
@@ -54,10 +59,13 @@ public class SqsPositionConsumer {
             handler.handle(positions);
 
             deleteMessages(messages);
+            return messages.size();
         } catch (SqsException e) {
             log.error("Failed to receive messages from SQS", e);
+            return 0;
         } catch (Exception e) {
             log.error("Failed to process messages — will NOT delete from queue (messages will reappear after visibility timeout)", e);
+            return 0;
         }
     }
 

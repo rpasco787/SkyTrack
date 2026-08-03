@@ -8,6 +8,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import skytrack.demo.model.FlightPosition;
 import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.model.BatchResultErrorEntry;
 import software.amazon.awssdk.services.sqs.model.SendMessageBatchRequest;
 import software.amazon.awssdk.services.sqs.model.SendMessageBatchResponse;
 
@@ -89,6 +90,36 @@ class SqsPositionProducerTest {
         producer.send(List.of());
 
         verifyNoInteractions(sqsClient);
+    }
+
+    @Test
+    void logsAnErrorWhenSqsRejectsPartOfTheBatch() {
+        var logger = (ch.qos.logback.classic.Logger)
+                org.slf4j.LoggerFactory.getLogger(SqsPositionProducer.class);
+        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        appender.setContext((ch.qos.logback.classic.LoggerContext)
+                org.slf4j.LoggerFactory.getILoggerFactory());
+        appender.start();
+        logger.addAppender(appender);
+
+        when(sqsClient.sendMessageBatch(any(SendMessageBatchRequest.class)))
+                .thenReturn(SendMessageBatchResponse.builder()
+                        .failed(BatchResultErrorEntry.builder()
+                                .id("0").code("InternalError").message("boom").senderFault(false)
+                                .build())
+                        .build());
+
+        producer.send(List.of(makePosition("abc123", "UAL1234", 1709312400L)));
+
+        logger.detachAppender(appender);
+        appender.stop();
+
+        assertThat(appender.list)
+                .as("a partially-rejected batch must not look like a success")
+                .anySatisfy(e -> {
+                    assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.ERROR);
+                    assertThat(e.getFormattedMessage()).contains("1").contains("rejected");
+                });
     }
 
     private FlightPosition makePosition(String icao, String callsign, long timePosition) {

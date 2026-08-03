@@ -14,7 +14,7 @@ class FlightDataSourceConfigTest {
 
     @Test
     void shouldCreateReplayClientWhenModeIsReplay() {
-        var props = new OpenSkyProperties("replay", null, null, null, "./data/recorded-opensky/", 1);
+        var props = new OpenSkyProperties("replay", null, null, null, "./data/recorded-opensky/", 1, false);
         var config = new FlightDataSourceConfig();
 
         FlightDataSource source = config.flightDataSource(props, mapper);
@@ -24,7 +24,7 @@ class FlightDataSourceConfigTest {
 
     @Test
     void shouldCreateLiveClientWhenModeIsLive() {
-        var props = new OpenSkyProperties("live", "https://opensky-network.org", null, null, null, 1);
+        var props = new OpenSkyProperties("live", "https://opensky-network.org", null, null, null, 1, false);
         var config = new FlightDataSourceConfig();
 
         FlightDataSource source = config.flightDataSource(props, mapper);

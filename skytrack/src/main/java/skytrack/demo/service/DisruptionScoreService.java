@@ -36,6 +36,11 @@ public class DisruptionScoreService {
                 airportBuckets.computeIfAbsent(event.arrivalAirportIata(), k -> new TreeMap<>());
         synchronized (buckets) {
             buckets.computeIfAbsent(bucketKey, k -> new BucketMetrics()).record(event);
+            // Evict here as well as in computeScore: an airport that is never queried would
+            // otherwise accumulate one bucket per minute forever, since computeScore is only
+            // reachable via GET /airports/{iata}. Anchor on the newest bucket rather than wall
+            // clock so replayed historical data evicts on the same rule as live data.
+            evictExpiredBuckets(buckets, buckets.lastKey() - (props.windowMinutes() * 60L));
         }
     }
 
@@ -121,6 +126,17 @@ public class DisruptionScoreService {
 
     private void evictExpiredBuckets(TreeMap<Long, BucketMetrics> buckets, long windowStart) {
         buckets.headMap(windowStart).clear();
+    }
+
+    /** Package-private so tests can observe retention of an otherwise opaque structure. */
+    int bucketCount(String airportIata) {
+        TreeMap<Long, BucketMetrics> buckets = airportBuckets.get(airportIata);
+        if (buckets == null) {
+            return 0;
+        }
+        synchronized (buckets) {
+            return buckets.size();
+        }
     }
 
     private long toBucketKey(long epochSeconds) {

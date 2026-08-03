@@ -27,7 +27,7 @@ class AircraftStateMachineTest {
     @BeforeEach
     void setUp() {
         airportLookup = mock(AirportLookupService.class);
-        var props = new StateMachineProperties(150.0, 50.0, 5.0, 300);
+        var props = new StateMachineProperties(150.0, 50.0, 5.0, 300, 120);
         stateMachine = new AircraftStateMachine(airportLookup, props);
     }
 
@@ -137,13 +137,29 @@ class AircraftStateMachineTest {
         track.setAircraftState(AircraftState.EN_ROUTE);
         track.setLastSeen(100L);
 
-        // Position arrives 400 seconds after last seen (> 300s timeout)
-        var pos = position("UAL1234", 41.0, -88.0, 10000.0, false, 500L);
+        // 500s after last seen, beyond the effective window (300s timeout + 120s persist interval)
+        var pos = position("UAL1234", 41.0, -88.0, 10000.0, false, 600L);
 
         var result = stateMachine.process(track, pos);
 
         assertThat(result.updatedTrack().getAircraftState()).isEqualTo(AircraftState.UNKNOWN);
         assertThat(result.landingEvent()).isEmpty();
+    }
+
+    @Test
+    void toleratesAGapInsideTheWidenedStaleWindow() {
+        var track = AircraftTrack.initial("abc123");
+        track.setAircraftState(AircraftState.EN_ROUTE);
+        track.setLastSeen(100L);
+
+        // 400s: past the raw 300s timeout but inside the 420s effective window. lastSeen is the
+        // last *persisted* contact and may lag the true one by up to the persist interval, so
+        // resetting here would be a false positive — and a landing seen from UNKNOWN is dropped.
+        var pos = position("UAL1234", 41.0, -88.0, 10000.0, false, 500L);
+
+        var result = stateMachine.process(track, pos);
+
+        assertThat(result.updatedTrack().getAircraftState()).isEqualTo(AircraftState.EN_ROUTE);
     }
 
     @Test
