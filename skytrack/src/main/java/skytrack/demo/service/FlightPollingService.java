@@ -30,8 +30,13 @@ public class FlightPollingService {
             log.info("Polled {} aircraft positions", positions.size());
 
             if (!positions.isEmpty()) {
-                sqsPositionProducer.send(positions);
-                log.info("Published {} positions to SQS", positions.size());
+                int queued = sqsPositionProducer.send(positions);
+                if (queued < positions.size()) {
+                    log.error("Published only {} of {} positions to SQS — {} lost",
+                            queued, positions.size(), positions.size() - queued);
+                } else {
+                    log.info("Published {} positions to SQS", queued);
+                }
             }
         } catch (Exception e) {
             log.error("Flight data polling failed", e);

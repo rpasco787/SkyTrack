@@ -26,18 +26,43 @@ public class SqsPositionProducer {
         this.queueUrl = queueUrl;
     }
 
-    public void send(List<FlightPosition> positions) {
+    /**
+     * @return the number of positions SQS accepted. Callers log this rather than the input size:
+     *         {@code sendBatch} swallows transport failures and SQS returns HTTP 200 for batches
+     *         with per-entry failures, so the input size is not evidence that anything was queued.
+     */
+    public int send(List<FlightPosition> positions) {
         if (positions.isEmpty()) {
-            return;
+            return 0;
         }
+
+        int accepted = 0;
+        // Collected across the whole send and logged once. One ERROR per failed batch means ~740
+        // synchronous console appends per poll on the single thread that also drives the next poll;
+        // the back-pressure delays ingestion long before the log volume matters.
+        String firstFailure = null;
 
         for (int i = 0; i < positions.size(); i += MAX_BATCH_SIZE) {
             List<FlightPosition> batch = positions.subList(i, Math.min(i + MAX_BATCH_SIZE, positions.size()));
-            sendBatch(batch);
+            BatchOutcome outcome = sendBatch(batch);
+            accepted += outcome.accepted();
+            if (firstFailure == null && outcome.failureReason() != null) {
+                firstFailure = outcome.failureReason();
+            }
         }
+
+        int rejected = positions.size() - accepted;
+        if (rejected > 0) {
+            log.error("SQS rejected {} of {} positions this poll (first failure: {})",
+                    rejected, positions.size(), firstFailure);
+        }
+        return accepted;
     }
 
-    private void sendBatch(List<FlightPosition> batch) {
+    /** @param failureReason null when the whole batch was accepted. */
+    private record BatchOutcome(int accepted, String failureReason) {}
+
+    private BatchOutcome sendBatch(List<FlightPosition> batch) {
         try {
             List<SendMessageBatchRequestEntry> entries = new ArrayList<>();
 
@@ -58,17 +83,14 @@ public class SqsPositionProducer {
                     .entries(entries)
                     .build());
 
-            if (!response.failed().isEmpty()) {
-                // SQS returns 200 for a batch where individual entries failed. Without this the loss is
-                // invisible: the positions are simply never queued and nothing downstream can tell.
-                log.error("SQS rejected {} of {} positions in batch (first: {} - {})",
-                        response.failed().size(), entries.size(),
-                        response.failed().get(0).code(), response.failed().get(0).message());
+            int failed = response.failed().size();
+            if (failed == 0) {
+                return new BatchOutcome(entries.size(), null);
             }
-
-            log.debug("Sent batch of {} positions to SQS", batch.size() - response.failed().size());
+            var first = response.failed().get(0);
+            return new BatchOutcome(entries.size() - failed, first.code() + " - " + first.message());
         } catch (Exception e) {
-            log.error("Failed to send batch of {} positions to SQS", batch.size(), e);
+            return new BatchOutcome(0, e.toString());
         }
     }
 }
