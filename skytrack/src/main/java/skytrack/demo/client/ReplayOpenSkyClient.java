@@ -83,7 +83,4 @@ public class ReplayOpenSkyClient implements FlightDataSource {
         }
     }
 
-    public int remainingFiles() {
-        return Math.max(0, replayFiles.size() - index.get());
-    }
 }

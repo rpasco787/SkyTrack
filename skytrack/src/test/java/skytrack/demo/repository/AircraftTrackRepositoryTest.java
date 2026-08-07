@@ -18,6 +18,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,7 +58,7 @@ class AircraftTrackRepositoryTest {
         var enhancedClient = DynamoDbEnhancedClient.builder().dynamoDbClient(dynamoDbClient).build();
         DynamoDbTable<AircraftTrack> table = enhancedClient.table(
                 "skytrack-aircraft", TableSchema.fromBean(AircraftTrack.class));
-        repository = new AircraftTrackRepository(table);
+        repository = new AircraftTrackRepository(table, enhancedClient);
     }
 
     @AfterAll
@@ -80,6 +81,41 @@ class AircraftTrackRepositoryTest {
         assertThat(found.get().getCallsign()).isEqualTo("UAL1234");
         assertThat(found.get().getAircraftState()).isEqualTo(AircraftState.EN_ROUTE);
         assertThat(found.get().getLatitude()).isEqualTo(41.9742);
+    }
+
+    @Test
+    void shouldBatchReadOnlyTheAircraftThatExist() {
+        // Against real DynamoDB, not a mock: findAllByIcao24 builds its own keys (partition icao24 +
+        // sort "TRACK") and reads through resultsForTable, none of which a mocked client would
+        // validate. A wrong sort key here returns an empty map and the handler would silently treat
+        // every aircraft as new.
+        var one = AircraftTrack.initial("batch-one");
+        one.setAircraftState(AircraftState.EN_ROUTE);
+        var two = AircraftTrack.initial("batch-two");
+        repository.save(one);
+        repository.save(two);
+
+        var found = repository.findAllByIcao24(List.of("batch-one", "batch-two", "batch-absent"));
+
+        assertThat(found).containsOnlyKeys("batch-one", "batch-two");
+        assertThat(found.get("batch-one").getAircraftState()).isEqualTo(AircraftState.EN_ROUTE);
+    }
+
+    @Test
+    void shouldReturnAMutableMapFromTheBatchRead() {
+        // The handler calls computeIfAbsent on this map to insert tracks for unseen aircraft.
+        // Returning an immutable map would throw on the first new aircraft in a batch.
+        repository.save(AircraftTrack.initial("batch-mutable"));
+
+        var found = repository.findAllByIcao24(List.of("batch-mutable"));
+        found.put("inserted-by-caller", AircraftTrack.initial("inserted-by-caller"));
+
+        assertThat(found).containsKey("inserted-by-caller");
+    }
+
+    @Test
+    void shouldReturnAnEmptyMapForNoKeysWithoutCallingDynamo() {
+        assertThat(repository.findAllByIcao24(List.of())).isEmpty();
     }
 
     @Test

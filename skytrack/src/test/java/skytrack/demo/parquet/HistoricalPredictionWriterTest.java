@@ -29,7 +29,7 @@ class HistoricalPredictionWriterTest {
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-03-09T20:30:00Z"), ZoneOffset.UTC);
     private final S3Properties props =
-            new S3Properties("skytrack-history", "http://localhost:4566", "us-east-1", "delays", 300);
+            new S3Properties("skytrack-history", "http://localhost:4566", "us-east-1", "delays", "predictions", 300);
 
     private static PredictedDelayEvent event(String iata) {
         return new PredictedDelayEvent(
@@ -69,6 +69,30 @@ class HistoricalPredictionWriterTest {
                 .startsWith("predictions/year=2026/month=03/day=09/hour=20/")
                 .endsWith(".parquet");
         assertThat(bodyCaptor.getValue().optionalContentLength().orElse(0L)).isGreaterThan(0L);
+    }
+
+    @Test
+    void shouldWriteUnderTheConfiguredPredictionPrefix() {
+        // The prefix must be honoured, not hardcoded: changing skytrack.s3.prefix used to move the
+        // delay writer's output and silently leave this writer's output where it was.
+        var customProps = new S3Properties("skytrack-history", "http://localhost:4566", "us-east-1",
+                "delays", "custom-predictions", 300);
+        S3Client s3 = mock(S3Client.class);
+        var writer = new HistoricalPredictionWriter(s3, new ParquetSerializer(), customProps, clock);
+
+        writer.buffer(event("ORD"));
+        writer.flush();
+
+        var captor = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3).putObject(captor.capture(), any(RequestBody.class));
+        assertThat(captor.getValue().key()).startsWith("custom-predictions/year=");
+    }
+
+    @Test
+    void shouldDefaultThePredictionPrefixToPredictions() {
+        // Must not fall back to prefix() — the two writers would collide in one S3 location.
+        var defaulted = new S3Properties("skytrack-history", null, "us-east-1", "delays", null, 300);
+        assertThat(defaulted.predictionPrefix()).isEqualTo("predictions");
     }
 
     @Test
@@ -258,4 +282,46 @@ class HistoricalPredictionWriterTest {
                 .extracting(PredictionParquetRow::inboundCallsign)
                 .endsWith("UAL1000000", "UAL1000001");
     }
+
+    @Test
+    void shouldDropOldestOnceTheIngestBufferIsFull() throws Exception {
+        // MAX_RETAINED_EVENTS was previously enforced only inside requeue(), i.e. only on the
+        // S3-failure path. A pipeline that never fails a put had no cap on ingest at all.
+        S3Client s3 = mock(S3Client.class);
+        ParquetSerializer serializer = spy(new ParquetSerializer());
+        var writer = new HistoricalPredictionWriter(s3, serializer, props, clock);
+
+        int cap = HistoricalPredictionWriter.MAX_RETAINED_EVENTS;
+        for (int i = 0; i < cap + 100; i++) {
+            writer.buffer(numbered(i));
+        }
+
+        assertThat(writer.retainedCount()).isEqualTo(cap);
+
+        writer.flush();   // reveals which events survived
+        ArgumentCaptor<List<PredictionParquetRow>> rows = ArgumentCaptor.captor();
+        verify(serializer).serializePredictions(rows.capture());
+        List<PredictionParquetRow> retained = rows.getValue();
+        assertThat(retained).hasSize(cap);
+        assertThat(retained.get(0).inboundCallsign())
+                .as("the 100 oldest must be the ones dropped, matching requeue()'s policy")
+                .isEqualTo("UAL100");
+        assertThat(retained.get(retained.size() - 1).inboundCallsign())
+                .as("the newest event must always survive")
+                .isEqualTo("UAL" + (cap + 99));
+    }
+
+    @Test
+    void shouldReportRetainedCountWithoutScanningTheQueue() {
+        // retainedCount() is backed by a counter, not ConcurrentLinkedQueue.size(), which is O(n)
+        // and would be walked once per buffered event on the hot path.
+        S3Client s3 = mock(S3Client.class);
+        var writer = new HistoricalPredictionWriter(s3, new ParquetSerializer(), props, clock);
+
+        writer.buffer(numbered(1));
+        writer.buffer(numbered(2));
+
+        assertThat(writer.retainedCount()).isEqualTo(2);
+    }
+
 }

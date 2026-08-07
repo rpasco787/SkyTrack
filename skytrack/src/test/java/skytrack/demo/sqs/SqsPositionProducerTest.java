@@ -1,20 +1,29 @@
 package skytrack.demo.sqs;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import skytrack.demo.model.FlightPosition;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.BatchResultErrorEntry;
 import software.amazon.awssdk.services.sqs.model.SendMessageBatchRequest;
 import software.amazon.awssdk.services.sqs.model.SendMessageBatchResponse;
+import software.amazon.awssdk.services.sqs.model.SqsException;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -27,10 +36,21 @@ class SqsPositionProducerTest {
     private SqsClient sqsClient;
 
     private SqsPositionProducer producer;
+    private ExecutorService pool;
 
     @BeforeEach
     void setUp() {
-        producer = new SqsPositionProducer(sqsClient, "http://localhost:4566/000000000000/skytrack-positions.fifo");
+        // A real pool, not a same-thread executor: shouldBlockUntilEveryBatchCompletesBeforeReturning
+        // asserts observed concurrency > 1, which a direct executor could never produce.
+        pool = Executors.newFixedThreadPool(8);
+        producer = new SqsPositionProducer(sqsClient,
+                "http://localhost:4566/000000000000/skytrack-positions.fifo",
+                pool);
+    }
+
+    @AfterEach
+    void tearDown() {
+        pool.shutdownNow();
     }
 
     @Test
@@ -94,14 +114,6 @@ class SqsPositionProducerTest {
 
     @Test
     void logsAnErrorWhenSqsRejectsPartOfTheBatch() {
-        var logger = (ch.qos.logback.classic.Logger)
-                org.slf4j.LoggerFactory.getLogger(SqsPositionProducer.class);
-        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
-        appender.setContext((ch.qos.logback.classic.LoggerContext)
-                org.slf4j.LoggerFactory.getILoggerFactory());
-        appender.start();
-        logger.addAppender(appender);
-
         when(sqsClient.sendMessageBatch(any(SendMessageBatchRequest.class)))
                 .thenReturn(SendMessageBatchResponse.builder()
                         .failed(BatchResultErrorEntry.builder()
@@ -109,17 +121,120 @@ class SqsPositionProducerTest {
                                 .build())
                         .build());
 
-        producer.send(List.of(makePosition("abc123", "UAL1234", 1709312400L)));
+        List<ILoggingEvent> events = captureProducerLog(
+                () -> producer.send(List.of(makePosition("abc123", "UAL1234", 1709312400L))));
 
-        logger.detachAppender(appender);
-        appender.stop();
-
-        assertThat(appender.list)
+        assertThat(events)
                 .as("a partially-rejected batch must not look like a success")
                 .anySatisfy(e -> {
-                    assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.ERROR);
+                    assertThat(e.getLevel()).isEqualTo(Level.ERROR);
                     assertThat(e.getFormattedMessage()).contains("1").contains("rejected");
                 });
+    }
+
+    @Test
+    void shouldReturnZeroWhenEveryBatchThrows() {
+        when(sqsClient.sendMessageBatch(any(SendMessageBatchRequest.class)))
+                .thenThrow(SqsException.builder().message("connection reset").build());
+
+        int queued = producer.send(positions(25));
+
+        assertThat(queued).isZero();
+    }
+
+    @Test
+    void shouldReturnOnlyTheAcceptedCountOnPartialBatchFailure() {
+        // SQS returns HTTP 200 for a batch where individual entries failed.
+        when(sqsClient.sendMessageBatch(any(SendMessageBatchRequest.class)))
+                .thenReturn(SendMessageBatchResponse.builder()
+                        .failed(BatchResultErrorEntry.builder()
+                                .id("0").code("InternalError").message("nope").build())
+                        .build());
+
+        int queued = producer.send(positions(10));
+
+        assertThat(queued).isEqualTo(9);
+    }
+
+    @Test
+    void shouldReturnTheFullCountWhenEveryEntryIsAccepted() {
+        when(sqsClient.sendMessageBatch(any(SendMessageBatchRequest.class)))
+                .thenReturn(SendMessageBatchResponse.builder().build());
+
+        int queued = producer.send(positions(25));
+
+        assertThat(queued).isEqualTo(25);
+    }
+
+    @Test
+    void shouldSendEveryBatchAndStillReturnAnAccurateCountWhenParallel() {
+        when(sqsClient.sendMessageBatch(any(SendMessageBatchRequest.class)))
+                .thenReturn(SendMessageBatchResponse.builder().build());
+
+        int queued = producer.send(positions(250));
+
+        assertThat(queued).isEqualTo(250);
+        verify(sqsClient, times(25)).sendMessageBatch(any(SendMessageBatchRequest.class));
+    }
+
+    @Test
+    void shouldBlockUntilEveryBatchCompletesBeforeReturning() {
+        // The barrier is what preserves FIFO ordering across polls. Without it, poll N+1 could
+        // overtake poll N for the same MessageGroupId.
+        var inFlight = new java.util.concurrent.atomic.AtomicInteger();
+        var maxObserved = new java.util.concurrent.atomic.AtomicInteger();
+        when(sqsClient.sendMessageBatch(any(SendMessageBatchRequest.class))).thenAnswer(inv -> {
+            maxObserved.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+            Thread.sleep(20);
+            inFlight.decrementAndGet();
+            return SendMessageBatchResponse.builder().build();
+        });
+
+        producer.send(positions(250));
+
+        assertThat(inFlight.get()).describedAs("send() returned with work still in flight").isZero();
+        assertThat(maxObserved.get()).describedAs("batches did not run in parallel").isGreaterThan(1);
+    }
+
+    @Test
+    void shouldLogOneAggregatedErrorPerSendRatherThanOnePerBatch() {
+        when(sqsClient.sendMessageBatch(any(SendMessageBatchRequest.class)))
+                .thenThrow(SqsException.builder().message("connection reset").build());
+
+        // 250 positions = 25 batches. The old code logged 25 ERRORs.
+        List<ILoggingEvent> events = captureProducerLog(() -> producer.send(positions(250)));
+
+        assertThat(events).filteredOn(e -> e.getLevel() == Level.ERROR)
+                .singleElement()
+                .satisfies(e -> assertThat(e.getFormattedMessage())
+                        .contains("250 of 250"));
+    }
+
+    /** Mirrors PredictionConfigTest.captureStartupLog. */
+    private static List<ILoggingEvent> captureProducerLog(Runnable action) {
+        var logger = (ch.qos.logback.classic.Logger)
+                LoggerFactory.getLogger(SqsPositionProducer.class);
+        var appender = new ListAppender<ILoggingEvent>();
+        appender.setContext((LoggerContext) LoggerFactory.getILoggerFactory());
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            action.run();
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+        return appender.list;
+    }
+
+    private static List<FlightPosition> positions(int count) {
+        List<FlightPosition> list = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            list.add(new FlightPosition("icao" + i, "CS" + i, 41.97, -87.91,
+                    10668.0, 230.5, 270.0, false,
+                    1709312400L, 1709312400L, Instant.now()));
+        }
+        return list;
     }
 
     private FlightPosition makePosition(String icao, String callsign, long timePosition) {

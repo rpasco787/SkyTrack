@@ -1,5 +1,6 @@
 package skytrack.demo.config;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import skytrack.demo.service.FlightPositionHandler;
@@ -34,9 +35,19 @@ public class SqsConfig {
     }
 
     @Bean
-    public SqsPositionProducer sqsPositionProducer(SqsClient sqsClient, SqsProperties properties) {
+    public SqsPositionProducer sqsPositionProducer(SqsClient sqsClient, SqsProperties properties,
+                                                   @Qualifier("sqsProducerPool") ExecutorService producerPool) {
         String queueUrl = resolveQueueUrl(sqsClient, properties.positionsQueueName());
-        return new SqsPositionProducer(sqsClient, queueUrl);
+        return new SqsPositionProducer(sqsClient, queueUrl, producerPool);
+    }
+
+    @Bean(destroyMethod = "shutdown")
+    public ExecutorService sqsProducerPool(SqsProperties properties) {
+        return Executors.newFixedThreadPool(properties.producerThreads(), r -> {
+            Thread t = new Thread(r, "sqs-producer");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     @Bean

@@ -22,7 +22,7 @@ import static org.mockito.Mockito.when;
 class AnalyticsServiceTest {
 
     private final S3Properties props =
-            new S3Properties("skytrack-history", null, "us-east-1", "delays", 300);
+            new S3Properties("skytrack-history", null, "us-east-1", "delays", "predictions", 300);
 
     private static DelayParquetRow row(String iata, long delay) {
         return new DelayParquetRow("abc", "UAL1", "UA", "1", "K" + iata, iata,

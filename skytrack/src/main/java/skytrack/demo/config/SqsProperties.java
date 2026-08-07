@@ -9,7 +9,8 @@ public record SqsProperties(
         String positionsQueueName,
         String airportEventsQueueName,
         String predictionQueueName,
-        int consumerThreads
+        int consumerThreads,
+        int producerThreads
 ) {
     public SqsProperties {
         if (region == null) region = "us-east-1";
@@ -17,5 +18,6 @@ public record SqsProperties(
         if (airportEventsQueueName == null) airportEventsQueueName = "skytrack-airport-events.fifo";
         if (predictionQueueName == null) predictionQueueName = "skytrack-predictions.fifo";
         if (consumerThreads <= 0) consumerThreads = 1;
+        if (producerThreads <= 0) producerThreads = 8;
     }
 }
