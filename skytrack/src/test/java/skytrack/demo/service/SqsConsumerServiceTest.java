@@ -71,10 +71,21 @@ class SqsConsumerServiceTest {
 
     @Test
     void stopHaltsTheWorkers() throws Exception {
-        when(consumer.poll()).thenReturn(10);
+        var polled = new CountDownLatch(1);
+        when(consumer.poll()).thenAnswer(inv -> { polled.countDown(); return 10; });
 
         var svc = service(1);
         svc.start();
+
+        // Wait until the worker is demonstrably polling before stopping it. Calling stop()
+        // immediately after start() raced the pool: if the worker had not been scheduled yet,
+        // poll() was never called, the stub went unused and Mockito's strict stubs failed the test
+        // (~1 run in 6). It also made the assertion below vacuous — "never polls after stop" is
+        // trivially true for a worker that never started.
+        assertThat(polled.await(2, TimeUnit.SECONDS))
+                .as("the worker must actually be polling, or stopping it proves nothing")
+                .isTrue();
+
         svc.stop();
 
         Thread.sleep(100);   // let any in-flight poll finish
