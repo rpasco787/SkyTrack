@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +22,8 @@ import software.amazon.awssdk.services.sqs.model.SqsException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -33,10 +36,21 @@ class SqsPositionProducerTest {
     private SqsClient sqsClient;
 
     private SqsPositionProducer producer;
+    private ExecutorService pool;
 
     @BeforeEach
     void setUp() {
-        producer = new SqsPositionProducer(sqsClient, "http://localhost:4566/000000000000/skytrack-positions.fifo");
+        // A real pool, not a same-thread executor: shouldBlockUntilEveryBatchCompletesBeforeReturning
+        // asserts observed concurrency > 1, which a direct executor could never produce.
+        pool = Executors.newFixedThreadPool(8);
+        producer = new SqsPositionProducer(sqsClient,
+                "http://localhost:4566/000000000000/skytrack-positions.fifo",
+                pool);
+    }
+
+    @AfterEach
+    void tearDown() {
+        pool.shutdownNow();
     }
 
     @Test
@@ -150,6 +164,36 @@ class SqsPositionProducerTest {
         int queued = producer.send(positions(25));
 
         assertThat(queued).isEqualTo(25);
+    }
+
+    @Test
+    void shouldSendEveryBatchAndStillReturnAnAccurateCountWhenParallel() {
+        when(sqsClient.sendMessageBatch(any(SendMessageBatchRequest.class)))
+                .thenReturn(SendMessageBatchResponse.builder().build());
+
+        int queued = producer.send(positions(250));
+
+        assertThat(queued).isEqualTo(250);
+        verify(sqsClient, times(25)).sendMessageBatch(any(SendMessageBatchRequest.class));
+    }
+
+    @Test
+    void shouldBlockUntilEveryBatchCompletesBeforeReturning() {
+        // The barrier is what preserves FIFO ordering across polls. Without it, poll N+1 could
+        // overtake poll N for the same MessageGroupId.
+        var inFlight = new java.util.concurrent.atomic.AtomicInteger();
+        var maxObserved = new java.util.concurrent.atomic.AtomicInteger();
+        when(sqsClient.sendMessageBatch(any(SendMessageBatchRequest.class))).thenAnswer(inv -> {
+            maxObserved.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+            Thread.sleep(20);
+            inFlight.decrementAndGet();
+            return SendMessageBatchResponse.builder().build();
+        });
+
+        producer.send(positions(250));
+
+        assertThat(inFlight.get()).describedAs("send() returned with work still in flight").isZero();
+        assertThat(maxObserved.get()).describedAs("batches did not run in parallel").isGreaterThan(1);
     }
 
     @Test

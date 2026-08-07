@@ -12,7 +12,12 @@ opensky:
 sqs:
   endpoint: http://localhost:4566
   region: us-east-1
+  # Measured 2026-08-06 (docs/throughput-measurements-2026-08-03.md): raising this to 16 does NOT
+  # scale throughput. Drain rate is ~430/sec at 4 threads and ~440/sec at 16 — the bottleneck is
+  # LocalStack as a shared serialized resource, not thread count. 16 threads also starves the
+  # producer (~2,500/sec -> ~532/sec) by competing for the same container. Left at 4 deliberately.
   consumer-threads: 4
+  producer-threads: 8
 
 aeroapi:
   enabled: true

@@ -15,7 +15,8 @@ class SqsConfigTest {
                 "skytrack-positions.fifo",
                 "skytrack-airport-events.fifo",
                 "skytrack-predictions.fifo",
-                1
+                1,
+                8
         );
         var config = new SqsConfig();
 

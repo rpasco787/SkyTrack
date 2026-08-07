@@ -10,6 +10,7 @@ import skytrack.demo.model.FlightPosition;
 import skytrack.demo.repository.AircraftTrackRepository;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Primary
@@ -38,10 +39,18 @@ public class StatefulFlightPositionHandler implements FlightPositionHandler {
     @Override
     public void handle(List<FlightPosition> positions) {
         int landings = 0;
+
+        // One BatchGetItem instead of one getItem per message. The map is also the batch's
+        // working set: process() mutates the track in place and a track that does not meet the
+        // persist condition is never written, so re-reading for a second position of the same
+        // aircraft would silently discard the first position's mutations.
+        Map<String, AircraftTrack> tracks = repository.findAllByIcao24(
+                positions.stream().map(FlightPosition::icao24).distinct().toList());
+
         for (FlightPosition position : positions) {
             try {
-                AircraftTrack track = repository.findByIcao24(position.icao24())
-                        .orElseGet(() -> AircraftTrack.initial(position.icao24()));
+                AircraftTrack track = tracks.computeIfAbsent(
+                        position.icao24(), AircraftTrack::initial);
 
                 // process() mutates the track in place, so the previous value has to be read first.
                 Long previousLastSeen = track.getLastSeen();

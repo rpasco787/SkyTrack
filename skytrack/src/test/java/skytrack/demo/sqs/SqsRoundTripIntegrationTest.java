@@ -20,6 +20,7 @@ import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executors;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,7 +69,7 @@ class SqsRoundTripIntegrationTest {
     @Test
     void shouldRoundTripFlightPositionsThroughSqs() {
         // Arrange: create producer and a capturing handler
-        var producer = new SqsPositionProducer(sqsClient, queueUrl);
+        var producer = new SqsPositionProducer(sqsClient, queueUrl, Executors.newFixedThreadPool(4));
         List<FlightPosition> received = new ArrayList<>();
         FlightPositionHandler capturingHandler = received::addAll;
         var consumer = new SqsPositionConsumer(sqsClient, queueUrl, capturingHandler);
@@ -105,7 +106,7 @@ class SqsRoundTripIntegrationTest {
 
     @Test
     void shouldHandleLargeBatchSplitting() {
-        var producer = new SqsPositionProducer(sqsClient, queueUrl);
+        var producer = new SqsPositionProducer(sqsClient, queueUrl, Executors.newFixedThreadPool(4));
         List<FlightPosition> received = new ArrayList<>();
         FlightPositionHandler capturingHandler = received::addAll;
         var consumer = new SqsPositionConsumer(sqsClient, queueUrl, capturingHandler);
@@ -131,7 +132,7 @@ class SqsRoundTripIntegrationTest {
 
     @Test
     void shouldPreserveMessageOrderWithinGroup() {
-        var producer = new SqsPositionProducer(sqsClient, queueUrl);
+        var producer = new SqsPositionProducer(sqsClient, queueUrl, Executors.newFixedThreadPool(4));
         List<FlightPosition> received = new ArrayList<>();
         FlightPositionHandler capturingHandler = received::addAll;
         var consumer = new SqsPositionConsumer(sqsClient, queueUrl, capturingHandler);

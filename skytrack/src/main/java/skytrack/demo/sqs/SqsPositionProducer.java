@@ -11,6 +11,9 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 public class SqsPositionProducer {
 
@@ -20,10 +23,12 @@ public class SqsPositionProducer {
 
     private final SqsClient sqsClient;
     private final String queueUrl;
+    private final ExecutorService pool;
 
-    public SqsPositionProducer(SqsClient sqsClient, String queueUrl) {
+    public SqsPositionProducer(SqsClient sqsClient, String queueUrl, ExecutorService pool) {
         this.sqsClient = sqsClient;
         this.queueUrl = queueUrl;
+        this.pool = pool;
     }
 
     /**
@@ -36,15 +41,36 @@ public class SqsPositionProducer {
             return 0;
         }
 
+        // Fan out within the poll, join before returning. ~740 synchronous sendMessageBatch calls
+        // on Spring's single scheduler thread ran the replay at ~7s/snapshot against a 2s config.
+        //
+        // The join is not optional: it is what preserves FIFO ordering across polls. A snapshot
+        // holds each aircraft at most once, so no two in-flight batches share a MessageGroupId;
+        // joining before returning stops poll N+1 from overtaking poll N for the same group.
+        List<Future<BatchOutcome>> futures = new ArrayList<>();
+        for (int i = 0; i < positions.size(); i += MAX_BATCH_SIZE) {
+            // List.copyOf is required: subList is a view of the caller's list, and handing views to
+            // another thread is a data race if the caller mutates.
+            List<FlightPosition> batch =
+                    List.copyOf(positions.subList(i, Math.min(i + MAX_BATCH_SIZE, positions.size())));
+            futures.add(pool.submit(() -> sendBatch(batch)));
+        }
+
         int accepted = 0;
         // Collected across the whole send and logged once. One ERROR per failed batch means ~740
         // synchronous console appends per poll on the single thread that also drives the next poll;
         // the back-pressure delays ingestion long before the log volume matters.
         String firstFailure = null;
-
-        for (int i = 0; i < positions.size(); i += MAX_BATCH_SIZE) {
-            List<FlightPosition> batch = positions.subList(i, Math.min(i + MAX_BATCH_SIZE, positions.size()));
-            BatchOutcome outcome = sendBatch(batch);
+        for (Future<BatchOutcome> future : futures) {
+            BatchOutcome outcome;
+            try {
+                outcome = future.get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                outcome = new BatchOutcome(0, "interrupted");
+            } catch (ExecutionException e) {
+                outcome = new BatchOutcome(0, e.getCause().toString());
+            }
             accepted += outcome.accepted();
             if (firstFailure == null && outcome.failureReason() != null) {
                 firstFailure = outcome.failureReason();

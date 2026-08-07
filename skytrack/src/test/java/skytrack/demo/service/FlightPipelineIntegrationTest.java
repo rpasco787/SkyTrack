@@ -72,7 +72,7 @@ class FlightPipelineIntegrationTest {
         var enhancedClient = DynamoDbEnhancedClient.builder().dynamoDbClient(dynamoDbClient).build();
         DynamoDbTable<AircraftTrack> table = enhancedClient.table(
                 "skytrack-aircraft", TableSchema.fromBean(AircraftTrack.class));
-        repository = new AircraftTrackRepository(table);
+        repository = new AircraftTrackRepository(table, enhancedClient);
 
         var airportLookup = new AirportLookupService("data/airports/airports.csv");
         airportLookup.loadAirports();

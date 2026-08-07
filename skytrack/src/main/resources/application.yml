@@ -19,6 +19,8 @@ sqs:
   airport-events-queue-name: skytrack-airport-events.fifo
   prediction-queue-name: skytrack-predictions.fifo
   consumer-threads: 4   # continuous workers; each blocks on a 20s long-poll when idle
+  producer-threads: 8   # parallel sendMessageBatch calls within one poll; joined before the
+                        # poll returns, so FIFO per-aircraft ordering is preserved across polls
 
 aeroapi:
   enabled: false
