@@ -16,6 +16,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Buffers predicted delay events and flushes them to S3 as parquet.
@@ -37,6 +38,10 @@ public class HistoricalPredictionWriter {
     static final int MAX_RETAINED_EVENTS = 50_000;
 
     private final ConcurrentLinkedQueue<PredictedDelayEvent> buffer = new ConcurrentLinkedQueue<>();
+
+    /** Authoritative size. ConcurrentLinkedQueue.size() is O(n) and cannot be called per event. */
+    private final AtomicInteger buffered = new AtomicInteger();
+    private final AtomicInteger droppedSinceLastLog = new AtomicInteger();
     private final S3Client s3;
     private final ParquetSerializer serializer;
     private final S3Properties props;
@@ -52,6 +57,12 @@ public class HistoricalPredictionWriter {
 
     public void buffer(PredictedDelayEvent event) {
         buffer.add(event);
+        if (buffered.incrementAndGet() > MAX_RETAINED_EVENTS && buffer.poll() != null) {
+            buffered.decrementAndGet();
+            // Oldest-first, matching requeue(). Counted rather than logged per drop —
+            // the drop condition is exactly when the log volume would be worst.
+            droppedSinceLastLog.incrementAndGet();
+        }
     }
 
     @Scheduled(fixedRateString = "#{${skytrack.s3.flush-interval-seconds:300} * 1000}",
@@ -122,10 +133,11 @@ public class HistoricalPredictionWriter {
 
         buffer.addAll(batch);
         buffer.addAll(arrivedDuringFlush);
+        buffered.addAndGet(batch.size() + arrivedDuringFlush.size());
     }
 
     int retainedCount() {
-        return buffer.size();
+        return buffered.get();
     }
 
     private List<PredictedDelayEvent> drain() {
@@ -134,12 +146,20 @@ public class HistoricalPredictionWriter {
         while ((e = buffer.poll()) != null) {
             batch.add(e);
         }
+        buffered.addAndGet(-batch.size());
+
+        int dropped = droppedSinceLastLog.getAndSet(0);
+        if (dropped > 0) {
+            log.warn("Ingest buffer full — dropped {} oldest prediction events since the last flush",
+                    dropped);
+        }
         return batch;
     }
 
     private String partitionKey() {
         ZonedDateTime now = ZonedDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-        return String.format("predictions/year=%04d/month=%02d/day=%02d/hour=%02d/predictions-%d.parquet",
+        return String.format("%s/year=%04d/month=%02d/day=%02d/hour=%02d/predictions-%d.parquet",
+                props.predictionPrefix(),
                 now.getYear(), now.getMonthValue(), now.getDayOfMonth(), now.getHour(),
                 clock.instant().toEpochMilli());
     }

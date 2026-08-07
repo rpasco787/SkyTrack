@@ -58,7 +58,7 @@ class HistoricalDelayWriterIntegrationTest {
         s3.createBucket(CreateBucketRequest.builder().bucket("skytrack-history").build());
 
         var props = new S3Properties("skytrack-history", localstack.getEndpoint().toString(),
-                localstack.getRegion(), "delays", 300);
+                localstack.getRegion(), "delays", "predictions", 300);
         var clock = Clock.fixed(Instant.parse("2026-05-29T14:05:00Z"), ZoneOffset.UTC);
         var serializer = new ParquetSerializer();
         var writer = new HistoricalDelayWriter(s3, serializer, props, clock);
