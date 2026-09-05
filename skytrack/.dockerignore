@@ -1,0 +1,20 @@
+# Build output and IDE state
+target/
+.vscode/
+.mvn/
+mvnw
+mvnw.cmd
+HELP.md
+*.log
+
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Docs
+docs/
+
+# ~700MB of local datasets (BTS CSV, recorded OpenSky snapshots). These are
+# volume-mounted by docker-compose.yml, never copied into the image.
+data/

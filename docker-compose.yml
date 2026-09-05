@@ -1,4 +1,35 @@
 services:
+  skytrack:
+    build: ./skytrack
+    ports:
+      - "8080:8080"
+    depends_on:
+      # SqsConfig resolves queue URLs while wiring beans, so the app must not start until
+      # init-aws.sh has created the queues; the LocalStack healthcheck below gates on that.
+      localstack:
+        condition: service_healthy
+      wiremock:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      # application-local.yml points at localhost; inside the compose network the sidecars
+      # are reachable by service name. Spring's relaxed binding maps these env vars onto
+      # sqs.endpoint, skytrack.dynamodb.endpoint, skytrack.s3.endpoint and aeroapi.base-url.
+      SQS_ENDPOINT: http://localstack:4566
+      SKYTRACK_DYNAMODB_ENDPOINT: http://localstack:4566
+      SKYTRACK_S3_ENDPOINT: http://localstack:4566
+      AEROAPI_BASE_URL: http://wiremock:8080/aeroapi
+    volumes:
+      # Datasets are gitignored and mostly live outside the ./skytrack build context, so they
+      # are mounted rather than baked into the image. Mounted one directory at a time because
+      # skytrack/data/airports is a symlink to ../../data/airports that would dangle in the
+      # container. Paths resolve against WORKDIR /app, matching the relative paths in
+      # application.yml / application-local.yml.
+      - "./data/airports:/app/data/airports:ro"
+      - "./skytrack/data/bts:/app/data/bts:ro"
+      - "./skytrack/data/recorded-opensky:/app/data/recorded-opensky:ro"
+      - "./data/recorded-weather:/app/data/recorded-weather:ro"
+
   wiremock:
     image: wiremock/wiremock:latest
     ports:
@@ -19,3 +50,11 @@ services:
     volumes:
       - "./localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh"
       - "/var/run/docker.sock:/var/run/docker.sock"
+    healthcheck:
+      # Healthy only once every ready.d init script has run, i.e. the queues, table and
+      # bucket exist. /_localstack/health alone reports "running" before that happens.
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/init/ready | grep -q '\"completed\": true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s

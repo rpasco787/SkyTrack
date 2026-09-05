@@ -181,6 +181,30 @@ terminate honestly — an earlier version measured slack against *scheduled* gro
 subtracts the quantity from itself and was positive only 45.8% of the time; against a pressured
 p15 floor it is positive 88.0% of the time.
 
+## Running locally
+
+The whole stack — the app plus its LocalStack and WireMock sidecars — runs under Docker Compose.
+The datasets are gitignored, so `data/airports/airports.csv`, `skytrack/data/bts/btsdata.csv` and
+`skytrack/data/recorded-opensky/` must exist on the host first; the compose file bind-mounts them
+read-only into the container.
+
+```sh
+docker compose up --build
+curl localhost:8080/airports/disruptions
+```
+
+The app starts only after LocalStack reports its init script complete (queues, table and bucket
+created). Service endpoints are overridden with environment variables in `docker-compose.yml`,
+which Spring's relaxed binding maps onto the `sqs.endpoint`, `skytrack.*.endpoint` and
+`aeroapi.base-url` properties otherwise set to `localhost` in `application-local.yml`.
+
+To run the app on the host JVM against the sidecars instead:
+
+```sh
+docker compose up -d localstack wiremock
+cd skytrack && ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+```
+
 ## API reference
 
 Nine endpoints. Disruption/flight/analytics samples are captured from the
