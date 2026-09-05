@@ -48,3 +48,72 @@ jobs:
           path: skytrack/target/surefire-reports/
           if-no-files-found: warn
           retention-days: 14
+
+  integration:
+    name: Integration tests (Testcontainers)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # Testcontainers starts its own localstack/localstack container per class via the
+      # runner's Docker daemon; nothing from docker-compose.yml is involved here.
+      - name: Run integration-tagged tests
+        working-directory: skytrack
+        run: ./mvnw verify -Dgroups=integration
+
+      - name: Summarize test results
+        if: always()
+        run: scripts/ci/surefire-summary.py skytrack/target/surefire-reports "Integration tests" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: surefire-reports-integration
+          path: skytrack/target/surefire-reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+  compose-smoke:
+    name: Compose smoke test
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE: docker compose -f docker-compose.yml -f docker-compose.ci.yml
+    steps:
+      - uses: actions/checkout@v7
+
+      # Builds the real image from skytrack/Dockerfile, then starts localstack (waits for its
+      # init script via the healthcheck), wiremock, and the app. --wait fails if any of them
+      # exits or never becomes healthy.
+      - name: Build image and start the stack
+        run: $COMPOSE up -d --build --wait skytrack
+
+      - name: Wait for readiness
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -sf localhost:8080/actuator/health/readiness; then echo; exit 0; fi
+            sleep 2
+          done
+          echo "::error::app never became ready" >&2
+          exit 1
+
+      - name: Probe health and API
+        run: |
+          curl -sf localhost:8080/actuator/health | tee /dev/stderr | grep -q '"status":"UP"'
+          curl -sf -o /dev/null -w '%{http_code}\n' localhost:8080/airports/disruptions | grep -qx 200
+
+      - name: Dump container logs
+        if: failure()
+        run: $COMPOSE logs --no-color --timestamps skytrack localstack
+
+      - name: Tear down
+        if: always()
+        run: $COMPOSE down -v
