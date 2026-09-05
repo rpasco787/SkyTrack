@@ -44,6 +44,10 @@ skytrack-learning-roadmap.md
 data/*
 !data/recorded-weather/
 !data/recorded-weather/**
+# OurAirports reference data, filtered to the US large/medium rows AirportLookupService keeps
+# (see README "Running locally"). Committed so CI and a clean checkout can start the app.
+!data/airports/
+!data/airports/airports.csv
 
 # LocalStack
 localstack/volume/

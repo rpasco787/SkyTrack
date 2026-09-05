@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+# A new push to the same branch/PR cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # -B: batch mode (no colour codes / progress bars). Quieter dependency download logs.
+  MAVEN_ARGS: -B --no-transfer-progress
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven            # keys ~/.m2/repository on **/pom.xml
+
+      # `integration` = the Testcontainers classes; they get their own job below.
+      # Surefire runs from the repo root (pom workingDirectory), so committed fixtures resolve.
+      - name: Build and run unit tests
+        working-directory: skytrack
+        run: ./mvnw verify -DexcludedGroups=integration
+
+      - name: Summarize test results
+        if: always()
+        run: scripts/ci/surefire-summary.py skytrack/target/surefire-reports "Unit tests" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: surefire-reports-unit
+          path: skytrack/target/surefire-reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+  integration:
+    name: Integration tests (Testcontainers)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # Testcontainers starts its own localstack/localstack container per class via the
+      # runner's Docker daemon; nothing from docker-compose.yml is involved here.
+      - name: Run integration-tagged tests
+        working-directory: skytrack
+        run: ./mvnw verify -Dgroups=integration
+
+      - name: Summarize test results
+        if: always()
+        run: scripts/ci/surefire-summary.py skytrack/target/surefire-reports "Integration tests" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: surefire-reports-integration
+          path: skytrack/target/surefire-reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+  compose-smoke:
+    name: Compose smoke test
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE: docker compose -f docker-compose.yml -f docker-compose.ci.yml
+    steps:
+      - uses: actions/checkout@v7
+
+      # Builds the real image from skytrack/Dockerfile, then starts localstack (waits for its
+      # init script via the healthcheck), wiremock, and the app. --wait fails if any of them
+      # exits or never becomes healthy.
+      - name: Build image and start the stack
+        run: $COMPOSE up -d --build --wait skytrack
+
+      - name: Wait for readiness
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -sf localhost:8080/actuator/health/readiness; then echo; exit 0; fi
+            sleep 2
+          done
+          echo "::error::app never became ready" >&2
+          exit 1
+
+      - name: Probe health and API
+        run: |
+          curl -sf localhost:8080/actuator/health | tee /dev/stderr | grep -q '"status":"UP"'
+          curl -sf -o /dev/null -w '%{http_code}\n' localhost:8080/airports/disruptions | grep -qx 200
+
+      - name: Dump container logs
+        if: failure()
+        run: $COMPOSE logs --no-color --timestamps skytrack localstack
+
+      - name: Tear down
+        if: always()
+        run: $COMPOSE down -v
+
+  image:
+    name: Publish image to GHCR
+    needs: [integration, compose-smoke]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write          # GITHUB_TOKEN may push to ghcr.io/<owner>/* with this
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: skytrack
+          push: true
+          tags: |
+            ghcr.io/rpasco787/skytrack:latest
+            ghcr.io/rpasco787/skytrack:${{ github.sha }}
+          # The source label ties the package to this repo in GitHub's UI (it shows up under
+          # the repo's "Packages" and links back). Visibility is still set by hand — see Task 9.
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          # Layer cache in the Actions cache service. The Dockerfile's RUN --mount=type=cache
+          # for ~/.m2 is NOT part of this (cache mounts are never exported), so the dependency
+          # download repeats on every cold run; the layer cache still skips it when pom.xml is
+          # unchanged.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

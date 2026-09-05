@@ -2,6 +2,7 @@ package skytrack.demo.repository;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.localstack.LocalStackContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -23,13 +24,17 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+// Needs a Docker daemon (Testcontainers LocalStack). CI runs this tag in its own job:
+//   ./mvnw verify -Dgroups=integration            (only these)
+//   ./mvnw verify -DexcludedGroups=integration    (everything else)
+@Tag("integration")
 @Testcontainers
 class AircraftTrackRepositoryTest {
 
     @SuppressWarnings("resource")
     @Container
     static LocalStackContainer localstack = new LocalStackContainer(
-            DockerImageName.parse("localstack/localstack:latest"))
+            DockerImageName.parse("localstack/localstack:4.4.0"))
             .withServices(LocalStackContainer.Service.DYNAMODB);
 
     private static DynamoDbClient dynamoDbClient;

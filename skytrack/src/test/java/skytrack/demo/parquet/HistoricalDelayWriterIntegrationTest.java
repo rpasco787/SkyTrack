@@ -1,5 +1,6 @@
 package skytrack.demo.parquet;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.localstack.LocalStackContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -26,13 +27,14 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Tag("integration")
 @Testcontainers
 class HistoricalDelayWriterIntegrationTest {
 
     @SuppressWarnings("resource")
     @Container
     static LocalStackContainer localstack = new LocalStackContainer(
-            DockerImageName.parse("localstack/localstack:latest"))
+            DockerImageName.parse("localstack/localstack:4.4.0"))
             .withServices(LocalStackContainer.Service.S3);
 
     private static S3Client s3Client() {

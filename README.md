@@ -1,5 +1,7 @@
 # SkyTrack
 
+[![CI](https://github.com/rpasco787/SkyTrack/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rpasco787/SkyTrack/actions/workflows/ci.yml)
+
 **Real-time flight delay detection, departure prediction, and airport-disruption scoring.**
 
 SkyTrack ingests live aircraft positions, detects landings with a per-aircraft state machine,
@@ -185,9 +187,10 @@ p15 floor it is positive 88.0% of the time.
 ## Running locally
 
 The whole stack — the app plus its LocalStack and WireMock sidecars — runs under Docker Compose.
-The datasets are gitignored, so `data/airports/airports.csv`, `skytrack/data/bts/btsdata.csv` and
-`skytrack/data/recorded-opensky/` must exist on the host first; the compose file bind-mounts them
-read-only into the container.
+`data/airports/airports.csv` (an OurAirports extract filtered to the US large/medium rows the app
+keeps) and `skytrack/data/recorded-opensky/` are committed; the 196 MB BTS on-time CSV is not, so
+`skytrack/data/bts/btsdata.csv` must exist on the host first. The compose file bind-mounts all
+three read-only into the container.
 
 ```sh
 docker compose up --build
@@ -209,6 +212,29 @@ To run the app on the host JVM against the sidecars instead:
 docker compose up -d localstack wiremock
 cd skytrack && ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
+
+### Container image
+
+Every push to `main` that passes CI publishes the image to GitHub Container Registry:
+
+```sh
+docker pull ghcr.io/rpasco787/skytrack:latest      # or :<commit sha>
+```
+
+It contains only the application jar; run it with the same environment variables and data
+mounts as the `skytrack` service in `docker-compose.yml`.
+
+### Tests
+
+```sh
+cd skytrack
+./mvnw verify                               # everything (needs Docker for the Testcontainers classes)
+./mvnw verify -DexcludedGroups=integration  # what CI's "Unit tests" job runs — no Docker
+./mvnw verify -Dgroups=integration          # what CI's "Integration tests" job runs
+```
+
+CI (`.github/workflows/ci.yml`) also boots the built image against LocalStack and WireMock with
+`docker compose -f docker-compose.yml -f docker-compose.ci.yml` and probes `/actuator/health`.
 
 ## Observability
 
