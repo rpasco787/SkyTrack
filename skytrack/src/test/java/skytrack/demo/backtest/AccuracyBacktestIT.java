@@ -1,11 +1,13 @@
 package skytrack.demo.backtest;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import skytrack.demo.client.ReplayOpenSkyClient;
 import skytrack.demo.config.DisruptionScoreProperties;
 import skytrack.demo.config.OpenSkyProperties;
 import skytrack.demo.config.PredictionProperties;
 import skytrack.demo.config.StateMachineProperties;
+import skytrack.demo.metrics.PipelineMetrics;
 import skytrack.demo.model.AircraftTrack;
 import skytrack.demo.model.BtsFlightRecord;
 import skytrack.demo.model.CascadeChain;
@@ -114,7 +116,7 @@ class AccuracyBacktestIT {
         var predictionService = new DelayPredictionService(
                 outboundResolver, turnaroundEstimator, delayPredictor, baselinePrior, predProps,
                 predictionStore, mock(SqsAirportEventProducer.class),
-                mock(HistoricalPredictionWriter.class), Clock.systemUTC());
+                mock(HistoricalPredictionWriter.class), Clock.systemUTC(), new PipelineMetrics(new SimpleMeterRegistry()));
 
         var disruptionProps = new DisruptionScoreProperties(60, 1, 10, 5, 0.85, 0.15, 8);
         var cascadeDetector = new CascadeChainDetector(

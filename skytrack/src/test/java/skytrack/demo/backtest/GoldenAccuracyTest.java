@@ -1,8 +1,10 @@
 package skytrack.demo.backtest;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import skytrack.demo.config.DisruptionScoreProperties;
 import skytrack.demo.config.PredictionProperties;
+import skytrack.demo.metrics.PipelineMetrics;
 import skytrack.demo.model.CascadeChain;
 import skytrack.demo.model.PredictedDelayEvent;
 import skytrack.demo.model.ResolvedArrival;
@@ -98,7 +100,7 @@ class GoldenAccuracyTest {
         var service = new DelayPredictionService(
                 outboundResolver, turnaround, predictor, BaselineDelayPrior.from(repo, new AirportTimeZoneResolver()), predProps,
                 store, mock(SqsAirportEventProducer.class), mock(HistoricalPredictionWriter.class),
-                Clock.systemUTC());
+                Clock.systemUTC(), new PipelineMetrics(new SimpleMeterRegistry()));
 
         for (ResolvedArrival arrival : arrivals) {
             service.predictNextDeparture(arrival);

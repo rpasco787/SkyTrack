@@ -1,5 +1,6 @@
 package skytrack.demo.service;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -7,6 +8,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import skytrack.demo.config.StateMachineProperties;
+import skytrack.demo.metrics.PipelineMetrics;
 import skytrack.demo.model.*;
 import skytrack.demo.repository.AircraftTrackRepository;
 
@@ -32,12 +34,14 @@ class StatefulFlightPositionHandlerTest {
     @Mock private DelayEventProcessor delayEventProcessor;
 
     private StatefulFlightPositionHandler handler;
+    private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
     @BeforeEach
     void setUp() {
         handler = new StatefulFlightPositionHandler(
                 repository, stateMachine, scheduleResolver, delayEventProcessor,
-                new StateMachineProperties(150.0, 50.0, 5.0, 300, 120));
+                new StateMachineProperties(150.0, 50.0, 5.0, 300, 120),
+                new PipelineMetrics(registry));
     }
 
     private FlightPosition position(String icao24, String callsign) {
@@ -152,6 +156,23 @@ class StatefulFlightPositionHandlerTest {
 
         verify(scheduleResolver).resolve(landingEvent);
         verify(delayEventProcessor).process(resolved);
+    }
+
+    @Test
+    void incrementsLandingsDetectedOncePerLandingEvent() {
+        var landing = new LandingEvent("abc123", "UAL1234", "KORD", "ORD",
+                1709312400L, 41.9742, -87.9073);
+        var track = AircraftTrack.initial("abc123");
+        when(repository.findAllByIcao24(anyCollection())).thenReturn(loaded("abc123", track));
+        when(stateMachine.process(any(), any()))
+                .thenReturn(new StateTransitionResult(track, Optional.of(landing), true))
+                .thenReturn(new StateTransitionResult(track, Optional.empty(), false));
+        when(scheduleResolver.resolve(any())).thenReturn(new ResolvedArrival("abc123", "UAL1234", "UA", "1234",
+                "KORD", "ORD", 1709312400L, null, null, "UNRESOLVED"));
+
+        handler.handle(List.of(position("abc123", "UAL1234"), position("abc123", "UAL1234")));
+
+        assertThat(registry.get(PipelineMetrics.LANDINGS_DETECTED).counter().count()).isEqualTo(1.0);
     }
 
     @Test

@@ -7,7 +7,9 @@ import org.testcontainers.containers.localstack.LocalStackContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import skytrack.demo.client.FlightScheduleApiClient;
+import skytrack.demo.metrics.PipelineMetrics;
 import skytrack.demo.service.RecentCascadeStore;
 import skytrack.demo.service.ScheduleCoverageTracker;
 import skytrack.demo.config.DisruptionScoreProperties;
@@ -102,7 +104,8 @@ class FlightPipelineIntegrationTest {
             }
         };
 
-        var scheduleResolver = new ScheduleResolver(apiClient, callsignParser, routeAverageEstimator);
+        var scheduleResolver = new ScheduleResolver(apiClient, callsignParser, routeAverageEstimator,
+                new PipelineMetrics(new SimpleMeterRegistry()));
 
         // Delay pipeline
         var delayComputer = new DelayComputer();
@@ -123,7 +126,8 @@ class FlightPipelineIntegrationTest {
                 mock(DelayPredictionService.class));
 
         handler = new StatefulFlightPositionHandler(
-                repository, stateMachine, scheduleResolver, delayEventProcessor, smProps);
+                repository, stateMachine, scheduleResolver, delayEventProcessor, smProps,
+                new PipelineMetrics(new SimpleMeterRegistry()));
     }
 
     @AfterAll

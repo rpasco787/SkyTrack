@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Service;
 import skytrack.demo.config.SqsProperties;
+import skytrack.demo.metrics.PipelineMetrics;
 import skytrack.demo.sqs.SqsPositionConsumer;
 
 import java.util.concurrent.ExecutorService;
@@ -22,14 +23,17 @@ public class SqsConsumerService implements SmartLifecycle {
     private final SqsPositionConsumer consumer;
     private final ExecutorService consumerPool;
     private final int consumerThreads;
+    private final PipelineMetrics metrics;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     public SqsConsumerService(SqsPositionConsumer consumer,
                               @Qualifier("sqsConsumerPool") ExecutorService consumerPool,
-                              SqsProperties properties) {
+                              SqsProperties properties,
+                              PipelineMetrics metrics) {
         this.consumer = consumer;
         this.consumerPool = consumerPool;
         this.consumerThreads = properties.consumerThreads();
+        this.metrics = metrics;
     }
 
     @Override
@@ -59,6 +63,7 @@ public class SqsConsumerService implements SmartLifecycle {
                 // the rest of the run, with no signal beyond this line.
                 log.error("Consumer worker poll failed", e);
             }
+            metrics.positionsConsumed(handled);
             if (handled == 0) {
                 idleBackoff();
             }

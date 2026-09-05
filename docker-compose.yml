@@ -58,3 +58,31 @@ services:
       timeout: 5s
       retries: 30
       start_period: 10s
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    ports:
+      # 9090 on the host is already WireMock; Prometheus stays on 9090 *inside* the network,
+      # which is what the Grafana datasource URL uses.
+      - "9091:9090"
+    volumes:
+      - "./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+    # No depends_on: Prometheus retries a down target every scrape_interval, so it can start
+    # before the app and simply show the target as DOWN until the JVM is up.
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    ports:
+      - "3000:3000"
+    environment:
+      # Local dev only: skip the login form so `docker compose up` lands straight on the dashboard.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      # Open the SkyTrack dashboard as the home page.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/skytrack.json
+    volumes:
+      - "./deploy/grafana/provisioning:/etc/grafana/provisioning:ro"
+      - "./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro"
+    depends_on:
+      - prometheus

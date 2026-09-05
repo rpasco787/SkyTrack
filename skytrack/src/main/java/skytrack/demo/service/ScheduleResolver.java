@@ -1,15 +1,19 @@
 package skytrack.demo.service;
 
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import skytrack.demo.client.FlightScheduleApiClient;
+import skytrack.demo.metrics.PipelineMetrics;
+import skytrack.demo.model.FlightSchedule;
 import skytrack.demo.model.LandingEvent;
 import skytrack.demo.model.ResolvedArrival;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.Optional;
 
 @Service
 public class ScheduleResolver {
@@ -19,13 +23,16 @@ public class ScheduleResolver {
     private final FlightScheduleApiClient apiClient;
     private final CallsignParser callsignParser;
     private final RouteAverageEstimator routeAverageEstimator;
+    private final PipelineMetrics metrics;
 
     public ScheduleResolver(FlightScheduleApiClient apiClient,
                             CallsignParser callsignParser,
-                            RouteAverageEstimator routeAverageEstimator) {
+                            RouteAverageEstimator routeAverageEstimator,
+                            PipelineMetrics metrics) {
         this.apiClient = apiClient;
         this.callsignParser = callsignParser;
         this.routeAverageEstimator = routeAverageEstimator;
+        this.metrics = metrics;
     }
 
     public ResolvedArrival resolve(LandingEvent event) {
@@ -41,7 +48,7 @@ public class ScheduleResolver {
 
         // Try AeroAPI
         try {
-            var schedule = apiClient.getFlightSchedule(event.callsign(), date);
+            var schedule = timedLookup(event.callsign(), date);
             if (schedule.isPresent()) {
                 var sched = schedule.get();
                 Long scheduledArrival = sched.scheduledArrival() != null
@@ -80,6 +87,23 @@ public class ScheduleResolver {
         log.info("Could not resolve schedule for {} at {}",
                 event.callsign(), event.arrivalAirportIata());
         return unresolved(event);
+    }
+
+    /**
+     * The one network call on the landing path, timed with an outcome tag. Exceptions propagate
+     * so the caller's existing catch/fallback is unchanged; they are recorded as "error" first.
+     */
+    private Optional<FlightSchedule> timedLookup(String callsign, String date) {
+        Timer.Sample sample = metrics.startTimer();
+        try {
+            Optional<FlightSchedule> schedule = apiClient.getFlightSchedule(callsign, date);
+            metrics.recordScheduleResolution(sample,
+                    schedule.isPresent() ? PipelineMetrics.OUTCOME_RESOLVED : PipelineMetrics.OUTCOME_EMPTY);
+            return schedule;
+        } catch (RuntimeException e) {
+            metrics.recordScheduleResolution(sample, PipelineMetrics.OUTCOME_ERROR);
+            throw e;
+        }
     }
 
     private ResolvedArrival unresolved(LandingEvent event) {
