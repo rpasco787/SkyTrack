@@ -58,4 +58,18 @@ class MetricsExposureTest {
         assertThat(get("/actuator/health/liveness").statusCode()).isEqualTo(200);
         assertThat(get("/actuator/health/readiness").statusCode()).isEqualTo(200);
     }
+
+    @Test
+    void customPipelineMetricsAreRegisteredAtStartup() throws Exception {
+        var body = get("/actuator/prometheus").body();
+
+        // Exact exported names — deploy/grafana/dashboards/skytrack.json queries these strings.
+        assertThat(body)
+                .contains("skytrack_positions_consumed_total")
+                .contains("skytrack_landings_detected_total")
+                .contains("skytrack_predictions_total{")
+                .contains("classification=\"SEVERE\"")
+                .contains("skytrack_schedule_resolution_seconds_bucket{")
+                .contains("outcome=\"resolved\"");
+    }
 }
