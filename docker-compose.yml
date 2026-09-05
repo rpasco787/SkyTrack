@@ -58,3 +58,14 @@ services:
       timeout: 5s
       retries: 30
       start_period: 10s
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    ports:
+      # 9090 on the host is already WireMock; Prometheus stays on 9090 *inside* the network,
+      # which is what the Grafana datasource URL uses.
+      - "9091:9090"
+    volumes:
+      - "./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+    # No depends_on: Prometheus retries a down target every scrape_interval, so it can start
+    # before the app and simply show the target as DOWN until the JVM is up.
