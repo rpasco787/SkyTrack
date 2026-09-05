@@ -70,6 +70,7 @@ class MetricsExposureTest {
                 .contains("skytrack_predictions_total{")
                 .contains("classification=\"SEVERE\"")
                 .contains("skytrack_schedule_resolution_seconds_bucket{")
-                .contains("outcome=\"resolved\"");
+                .contains("outcome=\"resolved\"")
+                .contains("skytrack_sqs_consumer_lag_messages");
     }
 }
