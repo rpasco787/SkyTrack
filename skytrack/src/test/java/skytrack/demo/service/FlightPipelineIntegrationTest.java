@@ -104,7 +104,8 @@ class FlightPipelineIntegrationTest {
             }
         };
 
-        var scheduleResolver = new ScheduleResolver(apiClient, callsignParser, routeAverageEstimator);
+        var scheduleResolver = new ScheduleResolver(apiClient, callsignParser, routeAverageEstimator,
+                new PipelineMetrics(new SimpleMeterRegistry()));
 
         // Delay pipeline
         var delayComputer = new DelayComputer();
