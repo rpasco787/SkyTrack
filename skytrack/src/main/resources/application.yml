@@ -3,12 +3,26 @@ spring:
     name: skytrack
 
 management:
+  endpoints:
+    web:
+      exposure:
+        # prometheus is scraped by the compose sidecar (deploy/prometheus/prometheus.yml). There is
+        # no auth in front of /actuator; revisit before exposing outside a trusted network.
+        include: health,info,prometheus
   endpoint:
     health:
       # The btsSchedule indicator carries its diagnosis in the details (record count, resolved
       # CSV path); with the default "never" the endpoint reports a bare DOWN and the reason is
       # lost. Revisit if /actuator is ever exposed outside a trusted network.
       show-details: always
+      # /actuator/health/liveness and /readiness. Boot only enables these automatically when it
+      # detects Kubernetes; compose healthchecks and the Grafana screenshot flow want them always.
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      # Stamped on every series so a multi-service Prometheus can filter {application="skytrack"}.
+      application: skytrack
 
 opensky:
   mode: replay
