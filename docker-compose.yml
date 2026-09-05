@@ -41,7 +41,10 @@ services:
     command: ["--verbose"]
 
   localstack:
-    image: localstack/localstack:latest
+    # Pinned: localstack/localstack:latest is the merged pro image since 2026.3.0 and
+    # exits 55 ("License activation failed") without LOCALSTACK_AUTH_TOKEN. 4.4.0 is the
+    # last token-free community release.
+    image: localstack/localstack:4.4.0
     ports:
       - "4566:4566"
     environment:

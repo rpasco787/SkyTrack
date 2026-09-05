@@ -34,7 +34,7 @@ class HistoricalDelayWriterIntegrationTest {
     @SuppressWarnings("resource")
     @Container
     static LocalStackContainer localstack = new LocalStackContainer(
-            DockerImageName.parse("localstack/localstack:latest"))
+            DockerImageName.parse("localstack/localstack:4.4.0"))
             .withServices(LocalStackContainer.Service.S3);
 
     private static S3Client s3Client() {

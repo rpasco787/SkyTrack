@@ -34,7 +34,7 @@ class AircraftTrackRepositoryTest {
     @SuppressWarnings("resource")
     @Container
     static LocalStackContainer localstack = new LocalStackContainer(
-            DockerImageName.parse("localstack/localstack:latest"))
+            DockerImageName.parse("localstack/localstack:4.4.0"))
             .withServices(LocalStackContainer.Service.DYNAMODB);
 
     private static DynamoDbClient dynamoDbClient;

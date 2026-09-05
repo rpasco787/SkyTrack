@@ -33,7 +33,7 @@ class SqsRoundTripIntegrationTest {
     @SuppressWarnings("resource")
     @Container
     static LocalStackContainer localstack = new LocalStackContainer(
-            DockerImageName.parse("localstack/localstack:latest"))
+            DockerImageName.parse("localstack/localstack:4.4.0"))
             .withServices(LocalStackContainer.Service.SQS);
 
     private static SqsClient sqsClient;
