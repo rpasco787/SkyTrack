@@ -115,7 +115,8 @@ Six layers (full write-up in [docs/architecture.md](docs/architecture.md)):
 - **Backend:** Java 25, Spring Boot 4.0.2, Lombok, Maven
 - **AWS:** SQS FIFO (×3, incl. a dead-letter queue), DynamoDB (single-table), S3 (Parquet
   history) — via AWS SDK v2
-- **Local stack:** LocalStack (SQS/DynamoDB/S3), WireMock (schedule API), Docker Compose
+- **Local stack:** LocalStack (SQS/DynamoDB/S3), WireMock (schedule API), Prometheus + Grafana
+  (metrics), Docker Compose
 - **Data:** OpenSky Network (positions), AviationWeather METAR (weather), **BTS On-Time
   Performance** (612k rows, March 2026 — rotations, schedules and delay ground truth), synthetic
   schedule stubs (anchored to real arrivals) for the live-replay arrival path
@@ -198,12 +199,37 @@ created). Service endpoints are overridden with environment variables in `docker
 which Spring's relaxed binding maps onto the `sqs.endpoint`, `skytrack.*.endpoint` and
 `aeroapi.base-url` properties otherwise set to `localhost` in `application-local.yml`.
 
+Grafana is at <http://localhost:3000> (anonymous admin, no login) with the pipeline dashboard
+provisioned from `deploy/grafana/dashboards/skytrack.json`; Prometheus is at
+<http://localhost:9091> (9090 on the host belongs to WireMock).
+
 To run the app on the host JVM against the sidecars instead:
 
 ```sh
 docker compose up -d localstack wiremock
 cd skytrack && ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
+
+## Observability
+
+Spring Boot Actuator exposes `/actuator/health` (with `/liveness` and `/readiness` probes) and
+`/actuator/prometheus`. The compose stack scrapes the latter every 5 s and provisions a Grafana
+dashboard of the pipeline:
+
+![Grafana dashboard during a replay run](docs/img/grafana.png)
+
+| Metric | Type | Where it is recorded |
+|---|---|---|
+| `skytrack_positions_consumed_total` | counter | `SqsConsumerService`, per poll, from the batch size `poll()` returns |
+| `skytrack_landings_detected_total` | counter | `StatefulFlightPositionHandler`, when the state machine emits a `LandingEvent` |
+| `skytrack_predictions_total{classification}` | counter | `DelayPredictionService`, per *emitted* `PredictedDelayEvent` (gated predictions are not counted) |
+| `skytrack_schedule_resolution_seconds{outcome}` | timer + histogram | `ScheduleResolver`, around the schedule-API call; `outcome` ∈ resolved / empty / error |
+| `skytrack_sqs_consumer_lag_messages` | gauge | `SqsQueueDepthMonitor`, `ApproximateNumberOfMessages` on the positions queue every 10 s |
+| `http_server_requests_seconds` | timer | Actuator's MVC instrumentation, free |
+| `jvm_*`, `process_*`, `system_*` | various | Micrometer's JVM binders, free |
+
+All custom series are registered at startup (see `PipelineMetrics`) so panels read zero rather
+than "No data" before the first event. Every series carries `application="skytrack"`.
 
 ## API reference
 
