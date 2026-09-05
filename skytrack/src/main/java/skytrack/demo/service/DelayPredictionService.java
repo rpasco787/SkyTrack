@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import skytrack.demo.config.PredictionProperties;
+import skytrack.demo.metrics.PipelineMetrics;
 import skytrack.demo.model.DelayClassification;
 import skytrack.demo.model.PredictedDelayEvent;
 import skytrack.demo.model.ResolvedArrival;
@@ -26,6 +27,7 @@ public class DelayPredictionService {
     private final SqsAirportEventProducer eventProducer;
     private final HistoricalPredictionWriter historicalPredictionWriter;
     private final Clock clock;
+    private final PipelineMetrics metrics;
 
     public DelayPredictionService(OutboundScheduleResolver resolver,
                                    TurnaroundEstimator turnaroundEstimator,
@@ -35,7 +37,8 @@ public class DelayPredictionService {
                                    RecentPredictionStore store,
                                    SqsAirportEventProducer eventProducer,
                                    HistoricalPredictionWriter historicalPredictionWriter,
-                                   Clock clock) {
+                                   Clock clock,
+                                   PipelineMetrics metrics) {
         this.resolver = resolver;
         this.turnaroundEstimator = turnaroundEstimator;
         this.delayPredictor = delayPredictor;
@@ -45,6 +48,7 @@ public class DelayPredictionService {
         this.eventProducer = eventProducer;
         this.historicalPredictionWriter = historicalPredictionWriter;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     public void predictNextDeparture(ResolvedArrival arrival) {
@@ -84,6 +88,7 @@ public class DelayPredictionService {
             store.add(event);
             eventProducer.send(event);
             historicalPredictionWriter.buffer(event);
+            metrics.predictionEmitted(event.predictedClassification());
 
             log.info("Predicted {}s departure delay for {} outbound {} from {} (actual={}s)",
                     predicted, arrival.callsign(), out.flightNumber(),

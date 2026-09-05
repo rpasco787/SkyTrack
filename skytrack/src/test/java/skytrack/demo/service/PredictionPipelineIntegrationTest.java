@@ -1,10 +1,12 @@
 package skytrack.demo.service;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import skytrack.demo.config.PredictionProperties;
 import skytrack.demo.controller.PredictionController;
+import skytrack.demo.metrics.PipelineMetrics;
 import skytrack.demo.model.PredictedDelayEvent;
 import skytrack.demo.model.ResolvedArrival;
 
@@ -53,7 +55,7 @@ class PredictionPipelineIntegrationTest {
                 store,
                 mock(skytrack.demo.sqs.SqsAirportEventProducer.class),
                 mock(skytrack.demo.parquet.HistoricalPredictionWriter.class),
-                java.time.Clock.systemUTC());
+                java.time.Clock.systemUTC(), new PipelineMetrics(new SimpleMeterRegistry()));
     }
 
     @Test

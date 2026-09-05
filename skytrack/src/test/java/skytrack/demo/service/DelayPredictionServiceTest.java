@@ -1,5 +1,6 @@
 package skytrack.demo.service;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -7,6 +8,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import skytrack.demo.config.PredictionProperties;
+import skytrack.demo.metrics.PipelineMetrics;
 import skytrack.demo.model.DelayClassification;
 import skytrack.demo.model.OutboundFlight;
 import skytrack.demo.model.PredictedDelayEvent;
@@ -49,13 +51,16 @@ class DelayPredictionServiceTest {
     private static final BaselineDelayPrior NO_PRIOR =
             BaselineDelayPrior.from(TestRepos.of(), new AirportTimeZoneResolver());
 
+    private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
+    private final PipelineMetrics metrics = new PipelineMetrics(registry);
+
     private DelayPredictionService service;
 
     @BeforeEach
     void setUp() {
         service = new DelayPredictionService(
                 resolver, turnaround, predictor, NO_PRIOR, props,
-                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK);
+                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK, metrics);
     }
 
     private ResolvedArrival arrival() {
@@ -76,6 +81,22 @@ class DelayPredictionServiceTest {
         verify(store).add(any(PredictedDelayEvent.class));
         verify(eventProducer).send(any(PredictedDelayEvent.class));
         verify(historicalPredictionWriter).buffer(any(PredictedDelayEvent.class));
+    }
+
+    @Test
+    void countsEmittedPredictionsByClassificationAndNotGatedOnes() {
+        when(resolver.resolve(any()))
+                .thenReturn(Optional.of(outboundAbove()))
+                .thenReturn(Optional.of(new OutboundFlight("UA", "5678", "N12345", "ORD", "LAX", SCHED_DEP_BELOW, null)));
+
+        service.predictNextDeparture(arrival());   // emitted, MODERATE
+        service.predictNextDeparture(arrival());   // below threshold, no event
+
+        assertThat(registry.get(PipelineMetrics.PREDICTIONS)
+                .tag("classification", DelayClassification.MODERATE.name()).counter().count()).isEqualTo(1.0);
+        double total = registry.find(PipelineMetrics.PREDICTIONS).counters().stream()
+                .mapToDouble(c -> c.count()).sum();
+        assertThat(total).as("gated predictions are not published and must not be counted").isEqualTo(1.0);
     }
 
     @Test
@@ -125,7 +146,7 @@ class DelayPredictionServiceTest {
         var carrierTurnaround = new TurnaroundEstimator(props, Map.of("AA", 3600L));
         var carrierService = new DelayPredictionService(
                 resolver, carrierTurnaround, predictor, NO_PRIOR, props,
-                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK);
+                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK, metrics);
         // outbound scheduled 1000s after landing: default turnaround -> predicted 1700s,
         // AA-specific turnaround -> predicted 2600s. Either way it clears the 900s threshold.
         var outbound = new OutboundFlight("AA", "5678", "N12345", "ORD", "LAX", LANDING + 1000, null);
@@ -146,7 +167,7 @@ class DelayPredictionServiceTest {
         var estimator = new TurnaroundEstimator(props, Map.of("AA|ORD", 3600L, "AA", 5400L));
         var airportAwareService = new DelayPredictionService(
                 resolver, estimator, predictor, NO_PRIOR, props,
-                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK);
+                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK, metrics);
         var outbound = new OutboundFlight("AA", "5678", "N12345", "ORD", "LAX", LANDING + 1000, null);
         when(resolver.resolve(any())).thenReturn(Optional.of(outbound));
 
@@ -164,7 +185,7 @@ class DelayPredictionServiceTest {
         // that habitually pushes back 300s late — a term the feasibility check cannot express.
         var priorService = new DelayPredictionService(
                 resolver, turnaround, predictor, priorOf("UA", "ORD", SCHED_DEP_ABOVE, 300L), props,
-                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK);
+                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK, metrics);
         when(resolver.resolve(any())).thenReturn(Optional.of(outboundAbove()));
 
         priorService.predictNextDeparture(arrival());
@@ -182,7 +203,7 @@ class DelayPredictionServiceTest {
                 props, Map.of("AA|ORD", 1800L), Map.of("AA|ORD", 3600L));
         var splitService = new DelayPredictionService(
                 resolver, estimator, predictor, NO_PRIOR, props,
-                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK);
+                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK, metrics);
         var outbound = new OutboundFlight("AA", "5678", "N12345", "ORD", "LAX", LANDING + 1000, null);
         when(resolver.resolve(any())).thenReturn(Optional.of(outbound));
 
@@ -202,7 +223,7 @@ class DelayPredictionServiceTest {
         var zeroThresholdProps = new PredictionProperties(true, "x", 45, 0, 360);
         var ungated = new DelayPredictionService(
                 resolver, turnaround, predictor, priorOf("UA", "ORD", schedDep, -180L),
-                zeroThresholdProps, store, eventProducer, historicalPredictionWriter, FIXED_CLOCK);
+                zeroThresholdProps, store, eventProducer, historicalPredictionWriter, FIXED_CLOCK, metrics);
         var outbound = new OutboundFlight("UA", "5678", "N12345", "ORD", "LAX", schedDep, 0L);
         when(resolver.resolve(any())).thenReturn(Optional.of(outbound));
 
@@ -219,7 +240,7 @@ class DelayPredictionServiceTest {
         long schedDep = LANDING + 99_999;
         var gated = new DelayPredictionService(
                 resolver, turnaround, predictor, priorOf("UA", "ORD", schedDep, -180L), props,
-                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK);
+                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK, metrics);
         var outbound = new OutboundFlight("UA", "5678", "N12345", "ORD", "LAX", schedDep, 0L);
         when(resolver.resolve(any())).thenReturn(Optional.of(outbound));
 
@@ -244,7 +265,7 @@ class DelayPredictionServiceTest {
         var zeroThresholdProps = new PredictionProperties(true, "x", 45, 0, 360);
         var zeroThresholdService = new DelayPredictionService(
                 resolver, turnaround, predictor, NO_PRIOR, zeroThresholdProps,
-                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK);
+                store, eventProducer, historicalPredictionWriter, FIXED_CLOCK, metrics);
         var outbound = new OutboundFlight("UA", "5678", "N12345", "ORD", "LAX", SCHED_DEP_BELOW, 300L);
         when(resolver.resolve(any())).thenReturn(Optional.of(outbound));
 
