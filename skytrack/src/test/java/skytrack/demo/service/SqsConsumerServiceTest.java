@@ -1,11 +1,13 @@
 package skytrack.demo.service;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import skytrack.demo.config.SqsProperties;
+import skytrack.demo.metrics.PipelineMetrics;
 import skytrack.demo.sqs.SqsPositionConsumer;
 
 import java.util.concurrent.CountDownLatch;
@@ -25,6 +27,7 @@ class SqsConsumerServiceTest {
 
     private ExecutorService pool;
     private SqsConsumerService service;
+    private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
     @AfterEach
     void tearDown() {
@@ -35,7 +38,7 @@ class SqsConsumerServiceTest {
     private SqsConsumerService service(int threads) {
         pool = Executors.newFixedThreadPool(Math.max(threads, 1));
         var props = new SqsProperties(null, null, null, null, null, threads, 8);
-        service = new SqsConsumerService(consumer, pool, props);
+        service = new SqsConsumerService(consumer, pool, props, new PipelineMetrics(registry));
         return service;
     }
 
@@ -122,6 +125,23 @@ class SqsConsumerServiceTest {
         assertThat(latch.await(5, TimeUnit.SECONDS))
                 .as("one failure must not silently reduce consumer capacity for the rest of the run")
                 .isTrue();
+    }
+
+    @Test
+    void countsEveryPositionMessageThePollReturned() throws Exception {
+        var latch = new CountDownLatch(3);
+        when(consumer.poll()).thenAnswer(inv -> {
+            latch.countDown();
+            return latch.getCount() > 0 ? 10 : 0;   // two full batches, then idle
+        });
+
+        service(1).start();
+        assertThat(latch.await(3, TimeUnit.SECONDS)).isTrue();
+        service.stop();
+
+        assertThat(registry.get(PipelineMetrics.POSITIONS_CONSUMED).counter().count())
+                .as("two polls of 10 plus an empty poll")
+                .isEqualTo(20.0);
     }
 
     @Test
