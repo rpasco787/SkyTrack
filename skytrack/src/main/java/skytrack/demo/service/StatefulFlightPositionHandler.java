@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import skytrack.demo.config.StateMachineProperties;
+import skytrack.demo.metrics.PipelineMetrics;
 import skytrack.demo.model.AircraftTrack;
 import skytrack.demo.model.FlightPosition;
 import skytrack.demo.repository.AircraftTrackRepository;
@@ -23,17 +24,20 @@ public class StatefulFlightPositionHandler implements FlightPositionHandler {
     private final ScheduleResolver scheduleResolver;
     private final DelayEventProcessor delayEventProcessor;
     private final StateMachineProperties props;
+    private final PipelineMetrics metrics;
 
     public StatefulFlightPositionHandler(AircraftTrackRepository repository,
                                          AircraftStateMachine stateMachine,
                                          ScheduleResolver scheduleResolver,
                                          DelayEventProcessor delayEventProcessor,
-                                         StateMachineProperties props) {
+                                         StateMachineProperties props,
+                                         PipelineMetrics metrics) {
         this.repository = repository;
         this.stateMachine = stateMachine;
         this.scheduleResolver = scheduleResolver;
         this.delayEventProcessor = delayEventProcessor;
         this.props = props;
+        this.metrics = metrics;
     }
 
     @Override
@@ -72,6 +76,7 @@ public class StatefulFlightPositionHandler implements FlightPositionHandler {
 
                 if (result.landingEvent().isPresent()) {
                     landings++;
+                    metrics.landingDetected();
                     var resolved = scheduleResolver.resolve(result.landingEvent().get());
                     delayEventProcessor.process(resolved);
                 }
