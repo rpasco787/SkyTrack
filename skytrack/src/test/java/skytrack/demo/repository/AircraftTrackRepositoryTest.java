@@ -2,6 +2,7 @@ package skytrack.demo.repository;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.localstack.LocalStackContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -23,6 +24,10 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+// Needs a Docker daemon (Testcontainers LocalStack). CI runs this tag in its own job:
+//   ./mvnw verify -Dgroups=integration            (only these)
+//   ./mvnw verify -DexcludedGroups=integration    (everything else)
+@Tag("integration")
 @Testcontainers
 class AircraftTrackRepositoryTest {
 

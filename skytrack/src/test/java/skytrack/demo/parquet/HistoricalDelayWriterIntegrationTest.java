@@ -1,5 +1,6 @@
 package skytrack.demo.parquet;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.localstack.LocalStackContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -26,6 +27,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Tag("integration")
 @Testcontainers
 class HistoricalDelayWriterIntegrationTest {
 
