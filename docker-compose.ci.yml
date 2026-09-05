@@ -1,0 +1,19 @@
+# CI overlay — always used together with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build --wait skytrack
+#
+# The 196 MB BTS CSV is gitignored, so on a clean checkout the base file's
+# ./skytrack/data/bts bind mount is an empty directory and the app fails to start
+# (BtsScheduleRepository.fromCsv throws on a missing file). Point the app at the
+# committed test fixture instead — the same override every @SpringBootTest uses
+# (skytrack.prediction.bts-csv-path -> SKYTRACK_PREDICTION_BTS_CSV_PATH via Spring
+# relaxed binding). The fixture is mounted at a top-level path, NOT nested inside
+# the base file's read-only /app/data/bts mount (Docker cannot create a mountpoint
+# under a :ro bind mount). Everything else the app reads at startup is either
+# tracked (recorded-opensky), committed by build: airports.csv, or optional
+# (recorded-weather).
+services:
+  skytrack:
+    environment:
+      SKYTRACK_PREDICTION_BTS_CSV_PATH: /app/bts-fixture.csv
+    volumes:
+      - "./skytrack/src/test/resources/backtest/bts-fixture-2026-03-09.csv:/app/bts-fixture.csv:ro"
