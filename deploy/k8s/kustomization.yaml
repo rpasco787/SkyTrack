@@ -15,4 +15,5 @@ resources:
   - localstack.yaml
   - wiremock.yaml
   - skytrack.yaml
+  - monitoring.yaml
   # Tasks 3–6 add: localstack.yaml, wiremock.yaml, skytrack.yaml, monitoring.yaml
