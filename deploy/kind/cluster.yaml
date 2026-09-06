@@ -1,0 +1,31 @@
+# kind cluster for the local SkyTrack stack. `${REPO_ROOT}` is substituted by
+# scripts/kind-up.sh — kind requires absolute host paths in extraMounts.
+#
+# The datasets are bind-mounted into the node here and then into the skytrack pod
+# with hostPath volumes (deploy/k8s/skytrack.yaml). They are far over the 1 MiB
+# ConfigMap limit (recorded-opensky alone is 525 MB), and a dev stack does not
+# need a PVC + loader job.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: skytrack
+nodes:
+  - role: control-plane
+    extraMounts:
+      # Same four directories docker-compose.yml mounts, same reasons (see its comments).
+      # data/airports is mounted, not skytrack/data/airports, because the latter is a
+      # symlink that would dangle inside the node.
+      - hostPath: ${REPO_ROOT}/data/airports
+        containerPath: /mnt/skytrack/airports
+        readOnly: true
+      - hostPath: ${REPO_ROOT}/skytrack/data/recorded-opensky
+        containerPath: /mnt/skytrack/recorded-opensky
+        readOnly: true
+      - hostPath: ${REPO_ROOT}/data/recorded-weather
+        containerPath: /mnt/skytrack/recorded-weather
+        readOnly: true
+      # The 196 MB BTS CSV is gitignored; mount the committed 5.4 MB test fixture instead,
+      # exactly as docker-compose.ci.yml does (the Deployment points
+      # SKYTRACK_PREDICTION_BTS_CSV_PATH at it).
+      - hostPath: ${REPO_ROOT}/skytrack/src/test/resources/backtest
+        containerPath: /mnt/skytrack/bts-fixture
+        readOnly: true
