@@ -20,6 +20,12 @@ nodes:
       - hostPath: ${REPO_ROOT}/skytrack/data/recorded-opensky
         containerPath: /mnt/skytrack/recorded-opensky
         readOnly: true
+      # wiremock/generated: 8.5 MB of gitignored per-callsign AeroAPI stubs produced by
+      # WireMockStubGeneratorIT. Mounted as a plain dir (not a ConfigMap) so the replay's
+      # schedule lookups resolve in kind the way they do in compose.
+      - hostPath: ${REPO_ROOT}/wiremock/generated
+        containerPath: /mnt/skytrack/wiremock-generated
+        readOnly: true
       - hostPath: ${REPO_ROOT}/data/recorded-weather
         containerPath: /mnt/skytrack/recorded-weather
         readOnly: true

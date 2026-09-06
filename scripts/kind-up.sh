@@ -27,7 +27,7 @@ mkdir -p "$STATE_DIR"
 # --- 1. cluster -----------------------------------------------------------------------
 # data/recorded-weather is whitelisted in .gitignore but git cannot track an empty dir,
 # so a clean checkout lacks it and kind would refuse to mount a missing hostPath.
-mkdir -p "$REPO_ROOT/data/recorded-weather"
+mkdir -p "$REPO_ROOT/data/recorded-weather" "$REPO_ROOT/wiremock/generated"
 
 cluster_existed=true
 if ! kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then

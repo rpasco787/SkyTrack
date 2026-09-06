@@ -1,5 +1,5 @@
-# WireMock standing in for FlightAware AeroAPI. Mirrors the `wiremock` compose service minus
-# the wiremock/generated stubs (8.5 MB, gitignored, over the ConfigMap limit).
+# WireMock standing in for FlightAware AeroAPI. Mirrors the `wiremock` compose service. The
+# gitignored wiremock/generated stubs come in as a hostPath dir mount (plan Task 10).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -56,6 +56,9 @@ spec:
             - { name: files, mountPath: /home/wiremock/__files/dal567-delayed-departure-response.json, subPath: dal567-delayed-departure-response.json, readOnly: true }
             - { name: files, mountPath: /home/wiremock/__files/ual1234-ontime-response.json,         subPath: ual1234-ontime-response.json,         readOnly: true }
             - { name: files, mountPath: /home/wiremock/__files/unknown-missing-response.json,        subPath: unknown-missing-response.json,        readOnly: true }
+            # Plain dir mount from the kind node (deploy/kind/cluster.yaml extraMount). A mount
+            # *inside* the subPath'd mappings dir is fine — each mountPath is its own mount.
+            - { name: generated, mountPath: /home/wiremock/mappings/generated, readOnly: true }
       volumes:
         - name: mappings
           configMap:
@@ -63,6 +66,10 @@ spec:
         - name: files
           configMap:
             name: wiremock-files
+        - name: generated
+          hostPath:
+            path: /mnt/skytrack/wiremock-generated
+            type: Directory
 ---
 apiVersion: v1
 kind: Service
