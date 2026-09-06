@@ -13,4 +13,5 @@ resources:
   - configmaps/grafana-dashboard-providers.yaml
   - configmaps/grafana-dashboards.yaml
   - localstack.yaml
+  - wiremock.yaml
   # Tasks 3–6 add: localstack.yaml, wiremock.yaml, skytrack.yaml, monitoring.yaml
