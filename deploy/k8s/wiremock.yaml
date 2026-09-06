@@ -1,0 +1,84 @@
+# WireMock standing in for FlightAware AeroAPI. Mirrors the `wiremock` compose service. The
+# gitignored wiremock/generated stubs come in as a hostPath dir mount (plan Task 10).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wiremock
+  labels:
+    app: wiremock
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wiremock
+  template:
+    metadata:
+      labels:
+        app: wiremock
+    spec:
+      containers:
+        - name: wiremock
+          image: wiremock/wiremock:3.13.1     # compose uses :latest; pinned here
+          args: ["--verbose"]
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /__admin/health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /__admin/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          volumeMounts:
+            # subPath, one entry per file: a plain configMap dir mount projects each key
+            # three times over (real ..data dir + ..data symlink + per-key symlink), and
+            # WireMock's recursive scan then loads every stub 3x (/__admin/mappings -> 15).
+            # subPath mounts land as plain files, so the scan sees each stub once.
+            - { name: mappings, mountPath: /home/wiremock/mappings/aal100-delayed-arrival.json, subPath: aal100-delayed-arrival.json, readOnly: true }
+            - { name: mappings, mountPath: /home/wiremock/mappings/daily-flights.json,          subPath: daily-flights.json,          readOnly: true }
+            - { name: mappings, mountPath: /home/wiremock/mappings/dal567-delayed-departure.json, subPath: dal567-delayed-departure.json, readOnly: true }
+            - { name: mappings, mountPath: /home/wiremock/mappings/ual1234-ontime.json,         subPath: ual1234-ontime.json,         readOnly: true }
+            - { name: mappings, mountPath: /home/wiremock/mappings/unknown-missing.json,        subPath: unknown-missing.json,        readOnly: true }
+            - { name: files, mountPath: /home/wiremock/__files/aal100-delayed-arrival-response.json, subPath: aal100-delayed-arrival-response.json, readOnly: true }
+            - { name: files, mountPath: /home/wiremock/__files/daily-flights-response.json,          subPath: daily-flights-response.json,          readOnly: true }
+            - { name: files, mountPath: /home/wiremock/__files/dal567-delayed-departure-response.json, subPath: dal567-delayed-departure-response.json, readOnly: true }
+            - { name: files, mountPath: /home/wiremock/__files/ual1234-ontime-response.json,         subPath: ual1234-ontime-response.json,         readOnly: true }
+            - { name: files, mountPath: /home/wiremock/__files/unknown-missing-response.json,        subPath: unknown-missing-response.json,        readOnly: true }
+            # Plain dir mount from the kind node (deploy/kind/cluster.yaml extraMount). A mount
+            # *inside* the subPath'd mappings dir is fine — each mountPath is its own mount.
+            - { name: generated, mountPath: /home/wiremock/mappings/generated, readOnly: true }
+      volumes:
+        - name: mappings
+          configMap:
+            name: wiremock-mappings
+        - name: files
+          configMap:
+            name: wiremock-files
+        - name: generated
+          hostPath:
+            path: /mnt/skytrack/wiremock-generated
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wiremock          # AEROAPI_BASE_URL is http://wiremock:8080/aeroapi
+spec:
+  selector:
+    app: wiremock
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

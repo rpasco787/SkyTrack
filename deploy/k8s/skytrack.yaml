@@ -1,0 +1,150 @@
+# The SkyTrack app. Mirrors the `skytrack` compose service:
+#   depends_on localstack:service_healthy  -> init container polling /_localstack/init/ready
+#   environment                            -> env (same names, same Spring relaxed binding)
+#   volumes (datasets)                     -> hostPath into the kind node's extraMounts
+#   docker-compose.ci.yml BTS fixture      -> SKYTRACK_PREDICTION_BTS_CSV_PATH
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skytrack
+  labels:
+    app: skytrack
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate: a surge pod would be a second replay producer publishing
+  # every position twice into the FIFO queue.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: skytrack
+  template:
+    metadata:
+      labels:
+        app: skytrack
+    spec:
+      initContainers:
+        # SqsConfig resolves queue URLs while wiring beans, so the app must not start until
+        # init-aws.sh has created the queues. Without this the pod would CrashLoopBackOff
+        # (with growing back-off, up to 5 min) until LocalStack caught up.
+        - name: wait-for-localstack
+          image: curlimages/curl:8.14.1
+          command: ["sh", "-c"]
+          args:
+            - |
+              until curl -sf http://localstack:4566/_localstack/init/ready | grep -q '"completed": true'; do
+                echo "waiting for LocalStack init scripts..."; sleep 2
+              done
+              echo "LocalStack ready"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      containers:
+        - name: skytrack
+          image: ghcr.io/rpasco787/skytrack:latest
+          # The image is side-loaded with `kind load docker-image` (the GHCR package is private
+          # until A3 Task 9). A :latest tag defaults to Always, which would try the registry
+          # and fail with ErrImagePull even though the image is on the node.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: local
+            # application-local.yml points at localhost; in-cluster the sidecars are reachable
+            # by Service name. Relaxed binding maps these onto sqs.endpoint,
+            # skytrack.dynamodb.endpoint, skytrack.s3.endpoint, aeroapi.base-url.
+            - name: SQS_ENDPOINT
+              value: http://localstack:4566
+            - name: SKYTRACK_DYNAMODB_ENDPOINT
+              value: http://localstack:4566
+            - name: SKYTRACK_S3_ENDPOINT
+              value: http://localstack:4566
+            - name: AEROAPI_BASE_URL
+              value: http://wiremock:8080/aeroapi
+            # The 196 MB BTS CSV is gitignored; use the committed replay-day fixture, as CI does.
+            - name: SKYTRACK_PREDICTION_BTS_CSV_PATH
+              value: /app/data/bts-fixture/bts-fixture-2026-03-09.csv
+            # Default max heap is 25% of the memory limit (384 MiB at 1.5 GiB) — too small
+            # once the snapshot index and BTS records are loaded.
+            - name: JAVA_TOOL_OPTIONS
+              value: -XX:MaxRAMPercentage=70
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+          # Startup: Spring + BTS fixture parse + snapshot index take 30–90 s on this laptop.
+          # The startup probe holds liveness off for up to 180 s so a slow cold start is not
+          # killed; once it passes, liveness/readiness take over at their own cadence.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            # Paths resolve against WORKDIR /app, matching application.yml / application-local.yml.
+            - name: airports
+              mountPath: /app/data/airports
+              readOnly: true
+            - name: recorded-opensky
+              mountPath: /app/data/recorded-opensky
+              readOnly: true
+            - name: recorded-weather
+              mountPath: /app/data/recorded-weather
+              readOnly: true
+            - name: bts-fixture
+              mountPath: /app/data/bts-fixture
+              readOnly: true
+      volumes:
+        # hostPath = the kind node's filesystem; deploy/kind/cluster.yaml bind-mounts the repo's
+        # data directories there. This couples the manifest to the kind config on purpose —
+        # a dev stack, not a portable chart.
+        - name: airports
+          hostPath:
+            path: /mnt/skytrack/airports
+            type: Directory
+        - name: recorded-opensky
+          hostPath:
+            path: /mnt/skytrack/recorded-opensky
+            type: Directory
+        - name: recorded-weather
+          hostPath:
+            path: /mnt/skytrack/recorded-weather
+            type: Directory
+        - name: bts-fixture
+          hostPath:
+            path: /mnt/skytrack/bts-fixture
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: skytrack          # Prometheus scrapes skytrack:8080/actuator/prometheus
+spec:
+  selector:
+    app: skytrack
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

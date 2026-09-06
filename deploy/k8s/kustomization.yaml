@@ -1,0 +1,19 @@
+# `kubectl apply -k deploy/k8s` (or scripts/kind-up.sh). Plain manifests, no overlays;
+# kustomize here only stamps the namespace and lists the files in apply order.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: skytrack
+resources:
+  - namespace.yaml
+  - configmaps/localstack-init.yaml
+  - configmaps/wiremock-mappings.yaml
+  - configmaps/wiremock-files.yaml
+  - configmaps/prometheus-config.yaml
+  - configmaps/grafana-datasources.yaml
+  - configmaps/grafana-dashboard-providers.yaml
+  - configmaps/grafana-dashboards.yaml
+  - localstack.yaml
+  - wiremock.yaml
+  - skytrack.yaml
+  - monitoring.yaml
+  # Tasks 3–6 add: localstack.yaml, wiremock.yaml, skytrack.yaml, monitoring.yaml
