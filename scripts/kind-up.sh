@@ -37,3 +37,59 @@ if ! kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
 fi
 kubectl --context "$CTX" cluster-info >/dev/null
 echo "kind-up: cluster '$CLUSTER' ready (context $CTX)"
+
+# --- 2. image -------------------------------------------------------------------------
+# The GHCR package is private until A3 Task 9, and the Deployment uses IfNotPresent, so the
+# image is always side-loaded into the node rather than pulled by the kubelet.
+case "$IMAGE_SOURCE" in
+  build) docker build -t "$IMAGE" "$REPO_ROOT/skytrack" ;;
+  pull)  docker pull "$IMAGE" ;;
+  local) docker image inspect "$IMAGE" >/dev/null || { echo "kind-up: $IMAGE not in local daemon" >&2; exit 1; } ;;
+  *)     echo "kind-up: SKYTRACK_IMAGE_SOURCE must be build|pull|local" >&2; exit 1 ;;
+esac
+kind load docker-image "$IMAGE" --name "$CLUSTER"
+
+# --- 3. manifests ---------------------------------------------------------------------
+"$REPO_ROOT/scripts/k8s-gen-configmaps.sh" >/dev/null
+kubectl --context "$CTX" apply -k "$REPO_ROOT/deploy/k8s"
+
+# A re-run may have changed the image (same tag) or a ConfigMap (same name): neither triggers
+# a rollout by itself, so bounce everything. Fresh cluster: skip, the first rollout is underway.
+if $cluster_existed; then
+  for d in localstack wiremock prometheus grafana skytrack; do
+    "${K[@]}" rollout restart "deploy/$d"
+  done
+fi
+
+# --- 4. wait --------------------------------------------------------------------------
+for d in localstack wiremock prometheus grafana skytrack; do
+  "${K[@]}" rollout status "deploy/$d" --timeout=300s
+done
+
+# --- 5. port-forward ------------------------------------------------------------------
+for spec in "skytrack 8080:8080" "grafana 3000:3000"; do
+  set -- $spec
+  pidfile="$STATE_DIR/pf-$1.pid"
+  if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+    continue   # forwarder from a previous run is still alive; it reconnects on its own
+  fi
+  nohup "$REPO_ROOT/scripts/kind-port-forward.sh" "$1" "$2" >"$STATE_DIR/pf-$1.log" 2>&1 &
+  echo $! > "$pidfile"
+done
+
+for _ in $(seq 1 30); do
+  curl -sf localhost:8080/actuator/health/readiness >/dev/null && break
+  sleep 1
+done
+curl -sf localhost:8080/actuator/health/readiness >/dev/null || { echo "kind-up: localhost:8080 never answered" >&2; exit 1; }
+
+cat <<EOF2
+
+SkyTrack is up on kind cluster '$CLUSTER' (kubectl context: $CTX, namespace: $NS)
+  API      http://localhost:8080/airports/disruptions
+  Health   http://localhost:8080/actuator/health
+  Grafana  http://localhost:3000
+  Pods     kubectl --context $CTX -n $NS get pods
+  Logs     kubectl --context $CTX -n $NS logs -f deploy/skytrack
+  Down     ./scripts/kind-down.sh
+EOF2
