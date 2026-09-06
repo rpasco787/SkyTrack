@@ -1,0 +1,84 @@
+# LocalStack (SQS, DynamoDB, S3). Mirrors the `localstack` service in docker-compose.yml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: localstack
+  labels:
+    app: localstack
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate       # in-memory state; two instances would have different queues
+  selector:
+    matchLabels:
+      app: localstack
+  template:
+    metadata:
+      labels:
+        app: localstack
+    spec:
+      containers:
+        - name: localstack
+          # Pinned: :latest is the merged pro image since 2026.3.0 and exits 55 without
+          # LOCALSTACK_AUTH_TOKEN. 4.4.0 is the last token-free community release.
+          image: localstack/localstack:4.4.0
+          ports:
+            - name: edge
+              containerPort: 4566
+          env:
+            - name: SERVICES
+              value: sqs,dynamodb,s3
+            - name: DEFAULT_REGION
+              value: us-east-1
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          # Ready only once every ready.d script has run, i.e. the queues, table and bucket
+          # exist. /_localstack/health alone reports "running" before that. Same check as the
+          # compose healthcheck; the skytrack init container polls the same URL.
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                # Folded scalar: an unquoted plain scalar containing ': ' would parse as a map.
+                - >-
+                  curl -sf http://localhost:4566/_localstack/init/ready | grep -q '"completed": true'
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /_localstack/health
+              port: edge
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          volumeMounts:
+            - name: init
+              mountPath: /etc/localstack/init/ready.d
+              readOnly: true
+      volumes:
+        - name: init
+          configMap:
+            name: localstack-init
+            # LocalStack exec()s ready.d scripts directly (runtime/init.py: subprocess.call
+            # with executable=path), so the file must carry the exec bit. ConfigMap volumes
+            # default to 0644.
+            defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: localstack        # the app's SQS_ENDPOINT etc. are http://localstack:4566
+spec:
+  selector:
+    app: localstack
+  ports:
+    - name: edge
+      port: 4566
+      targetPort: edge
